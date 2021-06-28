@@ -16,7 +16,7 @@
 <meta property="og:image" content="http://learning.gem5.org/book/_images/simple_config.png">
 <meta property="og:image" content="http://learning.gem5.org/book/_images/advanced_config.png">
 <meta property="article:published_time" content="2021-02-28T17:59:25.000Z">
-<meta property="article:modified_time" content="2021-03-01T18:26:29.718Z">
+<meta property="article:modified_time" content="2021-03-18T18:06:46.565Z">
 <meta property="article:author" content="John Doe">
 <meta property="article:tag" content="计算机体系结构">
 <meta name="twitter:card" content="summary">
@@ -161,6 +161,12 @@
 <li><a href="#%E4%BD%BF%E7%94%A8%E8%B0%83%E8%AF%95%E6%A0%87%E5%BF%97">使用调试标志</a></li>
 <li><a href="#%E6%B7%BB%E5%8A%A0%E4%B8%80%E4%B8%AA%E6%96%B0%E7%9A%84%E8%B0%83%E8%AF%95%E6%A0%87%E5%BF%97">添加一个新的调试标志</a></li>
 <li><a href="#%E8%B0%83%E8%AF%95%E8%BE%93%E5%87%BA">调试输出</a></li>
+<li><a href="#%E4%BD%BF%E7%94%A8dprintf%E4%BB%A5%E5%A4%96%E7%9A%84%E5%8A%9F%E8%83%BD">使用DPRINTF以外的功能</a></li>
+</ul>
+</li>
+<li><a href="#%E4%BA%8B%E4%BB%B6%E9%A9%B1%E5%8A%A8%E7%9A%84%E7%BC%96%E7%A8%8B">事件驱动的编程</a><ul>
+<li><a href="#%E5%88%9B%E5%BB%BA%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84%E4%BA%8B%E4%BB%B6%E5%9B%9E%E8%B0%83">创建一个简单的事件回调</a></li>
+<li><a href="#%E8%B0%83%E5%BA%A6%E4%BA%8B%E4%BB%B6">调度事件</a></li>
 </ul>
 </li>
 </ul>
@@ -557,11 +563,48 @@
 <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">gem5 Simulator System.  http:&#x2F;&#x2F;gem5.org</span><br><span class="line">gem5 is copyrighted software; use the --copyright option for details.</span><br><span class="line"></span><br><span class="line">gem5 compiled Jan  4 2017 09:40:10</span><br><span class="line">gem5 started Jan  4 2017 09:41:01</span><br><span class="line">gem5 executing on chinook, pid 29078</span><br><span class="line">command line: build&#x2F;X86&#x2F;gem5.opt --debug-flags&#x3D;Hello configs&#x2F;learning_gem5&#x2F;part2&#x2F;run_hello.py</span><br><span class="line"></span><br><span class="line">Global frequency set at 1000000000000 ticks per second</span><br><span class="line">      0: hello: Created the hello object</span><br><span class="line">Beginning simulation!</span><br><span class="line">info: Entering event queue @ 0.  Starting simulation...</span><br><span class="line">Exiting @ tick 18446744073709551615 because simulate() limit reached</span><br></pre></td></tr></table></figure>
 
 <p>您可以在<a target="_blank" rel="noopener" href="http://learning.gem5.org/book/_downloads/SConscript">这里</a>找到更新的SConcript文件，并在<a target="_blank" rel="noopener" href="http://learning.gem5.org/book/_downloads/hello_object.cc">这里</a>找到更新的hello对象代码。</p>
-<h4 id="调试输出"><a href="#调试输出" class="headerlink" title="调试输出"></a>调试输出</h4>
+<h4 id="调试输出"><a href="#调试输出" class="headerlink" title="调试输出"></a>调试输出</h4><p>略</p>
+<h4 id="使用DPRINTF以外的功能"><a href="#使用DPRINTF以外的功能" class="headerlink" title="使用DPRINTF以外的功能"></a>使用DPRINTF以外的功能</h4><p>DPRINTF是gem5中最常用的调试功能。但是，gem5提供了许多其他功能，这些功能在特定情况下很有用。</p>
+<ul>
+<li><p>DPRINTF(Flag,__VA_ARGS__)<br>带有一个标志和一个格式字符串以及任何格式参数。此函数要求当前作用域中有一个name（）函数（例如，从SimObject成员函数调用）。仅在启用标志时才打印格式化的字符串。</p>
+</li>
+<li><p>DTRACE(Flag)<br>如果启用了标志（Flag），则返回true，否则返回false。仅当启用调试标志（标志）时，这对于执行某些代码很有用。</p>
+</li>
+<li><p>DDUMP(Flag,data,count)<br>打印长度计数字节的二进制数据（数据）。以用户可读的方式将其格式化为十六进制。该宏还假定调用范围包含一个name（）函数。</p>
+</li>
+<li><p>DPRINTFS(Flag,SimObject,__VA_ARGS__)<br>像DPRINTF（）一样，只是需要一个额外的参数，该参数是具有name（）函数的对象，通常是SimObject。对于从具有指向其所有者的指针的SimObject的私有子类中进行调试，此功能很有用。</p>
+</li>
+<li><p>DPRINTFR(Flag,__VA_ARGS__)<br>此函数输出调试语句，而不输出名称。对于在不是没有name（）函数的SimObjects的对象中使用调试语句，这很有用。</p>
+</li>
+<li><p>DDUMPN(data,count)</p>
+</li>
+<li><p>DPRINTFN(__VA_ARGS__)<br>这些函数与以前的函数DDUMP（），DPRINTF（）和DPRINTFR（）相似，不同之处在于它们不使用标志作为参数。因此，无论何时启用调试，这些语句将始终打印。</p>
+</li>
+<li><p>DPRINTFNR(__VA_ARGS__)</p>
+<p>只有在“ opt”或“ debug”模式下编译gem5时，才能启用所有这些功能。所有其他模式都为上述功能使用空的占位符宏。因此，如果要使用调试标志，则必须使用“ gem5.opt”或“ gem5.debug”。</p>
+</li>
+</ul>
+<h3 id="事件驱动的编程"><a href="#事件驱动的编程" class="headerlink" title="事件驱动的编程"></a>事件驱动的编程</h3><p>gem5是事件驱动的模拟器。在本章中，我们将探讨如何创建和安排事件。我们将从<a target="_blank" rel="noopener" href="http://learning.gem5.org/book/part2/helloobject.html#hello-simobject-chapter">创建一个非常简单的SimObject</a>的简单HelloObject进行构建。</p>
+<h4 id="创建一个简单的事件回调"><a href="#创建一个简单的事件回调" class="headerlink" title="创建一个简单的事件回调"></a>创建一个简单的事件回调</h4><p>在gem5的事件驱动模型中，每个事件都有一个回调函数来处理该事件。通常，这是一个从Event继承的类。但是，gem5提供了用于创建简单事件的包装器功能。</p>
+<p>在HelloObject的头文件中，我们只需要声明一个每次事件触发时要执行的新函数（processEvent（））。此函数必须不带任何参数，并且不返回任何值。</p>
+<p>接下来，我们添加一个Event实例。 在这种情况下，我们将使用EventFunctionWrapper，它允许我们执行任何功能。</p>
+<p>我们还添加了一个startup（）函数，下面将对其进行说明。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">HelloObject</span> :</span> <span class="keyword">public</span> SimObject</span><br><span class="line">&#123;</span><br><span class="line">  <span class="keyword">private</span>:</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">processEvent</span><span class="params">()</span></span>;</span><br><span class="line"></span><br><span class="line">    EventFunctionWrapper event;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">public</span>:</span><br><span class="line">    HelloObject(HelloObjectParams *p);</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">startup</span><span class="params">()</span></span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>接下来，我们必须在HelloObject的构造函数中构造此事件。EventFuntionWrapper具有两个参数，一个要执行的函数和一个名称。该名称通常是拥有事件的SimObject的名称。打印名称时，名称末尾会自动附加一个“ .wrapped_function_event”。</p>
+<p>第一个参数只是一个不带参数且没有返回值的函数（std :: function &lt;void（void）&gt;）。通常，这是一个调用成员函数的简单lambda函数。但是，它可以是您想要的任何功能。 下面，我们在lambda（[this]）中对其进行介绍，以便我们可以调用该类实例的成员函数。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">HelloObject::HelloObject(HelloObjectParams *params) :</span><br><span class="line">    SimObject(params), event([<span class="keyword">this</span>]&#123;processEvent();&#125;, name())</span><br><span class="line">&#123;</span><br><span class="line">    DPRINTF(Hello, <span class="string">&quot;Created the hello object\n&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>我们还必须定义流程功能的实现。 在这种情况下，如果要调试，我们将只打印一些内容。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span></span><br><span class="line">HelloObject::processEvent()</span><br><span class="line">&#123;</span><br><span class="line">    DPRINTF(Hello, <span class="string">&quot;Hello world! Processing the event!\n&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="调度事件"><a href="#调度事件" class="headerlink" title="调度事件"></a>调度事件</h4><p>最后，对于要处理的事件，我们首先必须调度事件。为此，我们使用schedule（）函数。此函数在将来的某个时间安排某个事件的某个实例（事件驱动的模拟不允许事件在过去执行）。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">schedule(Event *event, Tick when)</span><br><span class="line"><span class="comment">// 安排事件（事件）在何时执行。此函数将事件放入事件队列，并在tick时执行事件。</span></span><br></pre></td></tr></table></figure>
+
+
       
     </div>
     <footer class="article-footer">
-      <a data-url="http://example.com/2021/03/01/Learning-Gem5%E4%B8%AD%E6%96%87%E7%BF%BB%E8%AF%91/" data-id="cklqx0kc800022ows4gxd9iv8" data-title="Learning Gem5中文翻译" class="article-share-link">Share</a>
+      <a data-url="http://example.com/2021/03/01/Learning-Gem5%E4%B8%AD%E6%96%87%E7%BF%BB%E8%AF%91/" data-id="ckqgkud08000b0fwsa917hxv2" data-title="Learning Gem5中文翻译" class="article-share-link">Share</a>
       
       
       
@@ -572,6 +615,15 @@
   
     
 <nav id="article-nav">
+  
+    <a href="/2021/04/28/Intel-Pin-Tool-Use-Note/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          Intel Pin Tool Use Note
+        
+      </div>
+    </a>
   
   
     <a href="/2021/02/26/Learning%20Gem5/" id="article-nav-older" class="article-nav-link-wrap">
@@ -622,7 +674,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">Archives</h3>
     <div class="widget">
-      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2021/03/">March 2021</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2021/02/">February 2021</a></li></ul>
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2021/06/">June 2021</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2021/04/">April 2021</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2021/03/">March 2021</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2021/02/">February 2021</a></li></ul>
     </div>
   </div>
 
@@ -635,15 +687,23 @@
       <ul>
         
           <li>
+            <a href="/2021/06/28/Scratchpad-Memory/">Scratchpad Memory</a>
+          </li>
+        
+          <li>
+            <a href="/2021/06/02/Computer-Architecture-Learning-Notes/">Computer_Architecture_Learning_Notes</a>
+          </li>
+        
+          <li>
+            <a href="/2021/04/28/Intel-Pin-Tool-Use-Note/">Intel Pin Tool Use Note</a>
+          </li>
+        
+          <li>
             <a href="/2021/03/01/Learning-Gem5%E4%B8%AD%E6%96%87%E7%BF%BB%E8%AF%91/">Learning Gem5中文翻译</a>
           </li>
         
           <li>
             <a href="/2021/02/26/Learning%20Gem5/">(no title)</a>
-          </li>
-        
-          <li>
-            <a href="/2021/02/26/hello-world/">Hello World</a>
           </li>
         
       </ul>
