@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> stfl-ddr-tc-2020 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="stfl-ddr-improving-the-energy-efficiency-of-memory-interface" class="text-2xl mt-2 font-sans">STFL-DDR: Improving the Energy-Efficiency of Memory Interface</h1>
+<h2 id="stfl-ddr" class="text-xl mt-2 pb-2 font-sans">STFL-DDR：提升内存接口能效</h2>
+<p class="font-serif my-1">Payman Behnam, Mahdi Nazm Bojnordi<br/>
+University of Utah<br/>
+IEEE TC 2020<br/>
+Presenter: wzw<br/>
+Date: 2026-03-31</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">三句话看懂</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: DRAM <code>data bus</code> 的能耗很高，<code>DDR4</code> 靠 termination 和高频率拿带宽，<code>LPDDR3</code> 靠 unterminated wires 省电，但会明显掉带宽。</li>
+<li class="ml-8"><strong>方法</strong>: STFL-DDR 用 <strong><code>LPDDR3 data wires + DDR4 clock/mode wires + transition-based encoding</code></strong>，强制相邻周期不连续翻转，在低功耗线上跑高参考时钟。</li>
+<li class="ml-8"><strong>结果</strong>: 仅优化 DRAM 接口时，interface energy 相对 LPDDR3 再降 <strong><code>17%</code></strong>；同时优化 LLC + DRAM 后，system energy / EDP / performance 分别改善 <strong><code>8% / 15% / 9%</code></strong>，且性能达到 HP baseline 的 <strong><code>98%</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么值得看</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_1_Figure_2.jpeg" width="760" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.1 说明：<strong>LLC + DRAM I/O 合起来约占系统能耗 <code>33%</code></strong>，data movement 已经不是边角料。</li>
+<li class="ml-8">其中 off-chip wires 既要高带宽，又要低能耗，正好把 DDR-style 高性能接口和 LPDDR-style 低功耗接口推到冲突面。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">传统接口的两难</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_1_Picture_11.jpeg" width="760" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>DDR4 / pseudo open drain</strong>: 有 termination，能跑高数据率，但 <code>read/write</code> 都要付出额外功耗。</li>
+<li class="ml-8"><strong>LPDDR3 / unterminated</strong>: 把 termination power 几乎清掉，但 wire 速度慢，系统容易被 bandwidth loss 反噬。</li>
+<li class="ml-8">所以问题不是“怎么再省一点 bit flips”，而是<strong>能不能保留 LP 的低功耗，同时尽量拿回 DDR 的吞吐</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_2_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.3 的核心不是让低功耗线“真的更快翻转”，而是把 <strong><code>1</code> 编成 transition、<code>0</code> 编成 no-transition</strong>。</li>
+<li class="ml-8">每出现一次 <code>1</code>，下一拍强制插入 dummy <code>0</code>，从而保证 <strong>不会有连续两拍翻转</strong>，信号完整性才撑得住。</li>
+<li class="ml-8">这让 STFL 变成一个新 tradeoff: <strong>功耗接近 LP，传输时间明显短于 LP</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">总体方案</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_2_Figure_10.jpeg" width="820" style="max-width: 92%; max-height: 430px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>数据线</strong>: 借用 <code>LPDDR3 @ 800 MHz</code> 的 low-power unterminated wires。</li>
+<li class="ml-8"><strong>时钟与 mode bit</strong>: 借用 <code>DDR4 @ 1600 MHz</code> 的 high-performance wires。</li>
+<li class="ml-8"><strong>新增逻辑</strong>: 每组 8 根 data wires 前后各加 <code>encoder / transmitter / receiver / decoder</code>，controller 负责管理编码与模式位。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1" class="text-2xl mt-2 font-sans">机制 1：发送端怎么工作</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_3_Picture_2.jpeg" width="800" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">先对每个 byte 计算 <code>Hamming weight</code>，若大于 4 就先取反，保证一条 data wire 上发送的 <code>1</code> 不会超过 4 个。</li>
+<li class="ml-8">然后 <code>shift register + transition generator</code> 把 bitstream 变成 wire flips。</li>
+<li class="ml-8"><code>delay injector</code> 在每个 <code>1</code> 后插入 dummy <code>0</code>，把最大 transition rate 压到安全范围内。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2" class="text-2xl mt-2 font-sans">机制 2：接收端怎么还原</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_3_Picture_14.jpeg" width="800" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>transition detector</code> 用 <code>XOR + flip-flop</code> 把“有翻转”恢复成 <code>1</code>，没翻转恢复成 <code>0</code>。</li>
+<li class="ml-8">receiver 看到 <code>1</code> 时暂停 shift，相当于把前一拍插入的 dummy <code>0</code> 覆盖掉。</li>
+<li class="ml-8">最后再按 inversion bit 做 <code>XOR</code>，把原始 byte 还原回来。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="3" class="text-2xl mt-2 font-sans">机制 3：二维编码</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">仅靠“每个 byte 自己取反”还不够，STFL-DDR 还对每个 <code>8 x 8</code> 数据块做两阶段编码。</li>
+<li class="ml-8"><strong>Phase 1</strong>: 对相邻列做 <code>XOR</code>，如果结果 <code>HW &gt; 4</code>，就翻转左列并设置 vertical mode bit，提高列间相似性。</li>
+<li class="ml-8"><strong>Phase 2</strong>: 对每一行单独看 <code>HW</code>，若 <code>HW &gt; 4</code>，就翻转该行并设置 horizontal mode bit。</li>
+<li class="ml-8">这一步的目标不是最优压缩，而是给 signaling 一个稳定的输入分布。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="4-1" class="text-2xl mt-2 font-sans">为什么要压到 4 个 1</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">关键硬约束是 <code>HW(row) &lt;= 4</code>。</li>
+<li class="ml-8">每条 data wire 上，8-bit 数据最坏只需插入 4 个 dummy <code>0</code>。</li>
+<li class="ml-8">所以传输长度和最大 transition rate 都能被上界化，编码也就成了 signaling 的 correctness guard。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">一次传输怎么走</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Step 1: 输入的 <code>8 x 8</code> 数据块先做两阶段编码，得到 data bits 和 mode bits。</li>
+<li class="ml-8">Step 2: 每条 data wire 把 <code>1</code> 变成 transition、把 <code>0</code> 变成 no-transition，并在每个 <code>1</code> 后自动插入 dummy <code>0</code>。</li>
+<li class="ml-8">Step 3: 所有 mode bits 走独立的 DDR4-style mode wire，data 走 LPDDR3-style unterminated wires。</li>
+<li class="ml-8">Step 4: receiver 检测 transition、删除 dummy <code>0</code>、恢复 inversion 后的原始数据。</li>
+<li class="ml-8"><strong>一句话</strong>: STFL-DDR 把“wire 太慢”这个物理问题，改写成“编码后每条 wire 的 <code>1</code> 必须足够稀疏”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">带宽怎么算回来</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">STFL-DDR 用 <strong><code>1600 MHz</code> reference clock</strong>，但要求实际 transition 频率不超过 <code>800 MHz</code>。</li>
+<li class="ml-8">关键吞吐计算是 <code>8 bits / 6 cycle times ≈ 1.33 bits per cycle time</code>。</li>
+<li class="ml-8">对应的有效带宽约为 <strong><code>2.13 Gbps</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">这个带宽点位意味着什么</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">STFL-DDR 的目标不是追平最强 speed bin 的 DDR4，而是<strong>用更低能耗逼近一个中高档 DDR 点位</strong>。</li>
+<li class="ml-8">所以它的 headline 不是 peak bandwidth，而是 <strong>energy-efficiency at a useful operating point</strong>。</li>
+<li class="ml-8">后面的能耗、性能、EDP 结果，本质上都在验证这个 operating point 是否值得。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">硬件账单</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>综合结果</strong>: 对 64-bit DRAM interface，<code>STFL encoder</code> 面积约 <strong><code>1642 um^2</code></strong>、延迟 <strong><code>0.831 ns</code></strong>、功耗 <strong><code>0.49 mW</code></strong>。</li>
+<li class="ml-8"><code>STFL decoder</code> 面积约 <strong><code>102 um^2</code></strong>、延迟 <strong><code>0.071 ns</code></strong>、功耗 <strong><code>0.71 mW</code></strong>。</li>
+<li class="ml-8">相比 <code>BD</code> 和 <code>CAFO</code>，STFL 的编码/解码硬件 <strong>面积更小</strong>，延迟和功耗也在同一量级。</li>
+<li class="ml-8">真正的风险不在 combinational logic，而在 <strong>混合 PHY 假设</strong>: 论文复用了 <code>LPDDR3 data wires + DDR4 clock/mode wires</code>，工业落地需要更细的 SI / validation 证据。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Infrastructure</strong>: <code>ESESC + HSPICE + PTM 22nm + CACTI IO + Micron power calculator + DRAMPower + McPAT</code>。</li>
+<li class="ml-8"><strong>Processor</strong>: <code>4-core OoO @ 3.2GHz</code>，<code>32KB L1</code>，<code>4MB shared LLC</code>，<code>2 DRAM channels</code>。</li>
+<li class="ml-8"><strong>Baselines</strong>: binary encoding、<code>DBI</code>、<code>BD</code>、<code>CAFO</code>、<code>DESC</code>、<code>SETS</code>，以及 <code>LP baseline</code>。</li>
+<li class="ml-8"><strong>Workloads</strong>: 共 <code>12</code> 个并行 benchmark，来自 <code>NAS OpenMP + SPLASH-2 + Phoenix</code>。</li>
+<li class="ml-8"><strong>关键假设</strong>: DRAM core timing 统一按 <code>DDR4-2133</code> 建模，但 <code>t_BURST = 6</code> for STFL-DDR，<code>4</code> for others。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1" class="text-2xl mt-2 font-sans">结果 1：接口能耗</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_8_Figure_2.jpeg" width="780" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.14 看的是 <strong>仅优化 DRAM I/O</strong> 时的 interface energy。</li>
+<li class="ml-8">STFL-DDR 相对传统高性能接口，平均把 DRAM interface energy 压到 <strong><code>28%</code></strong> 左右，也就是 <strong><code>-72%</code></strong>。</li>
+<li class="ml-8">相对 LPDDR3 baseline，STFL-DDR 还能继续下降 <strong><code>17%</code></strong>，说明收益不只是“换成 unterminated wires”，还来自 <strong>编码降低 switching</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2dram" class="text-2xl mt-2 font-sans">结果 2：DRAM 总能量</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_8_Figure_4.jpeg" width="760" style="max-width: 92%; max-height: 340px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.15: 仅看 DRAM，总能量平均 <strong><code>-26%</code></strong>；但对多数应用，LPDDR3 也有 <strong><code>-22%</code></strong>，说明很多 workload 对带宽不敏感。</li>
+<li class="ml-8"><code>BT</code> 这类高带宽应用是例外：LP 虽然更省 DRAM energy，但会因带宽不足拉长时间，静态能耗反而更高。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="3" class="text-2xl mt-2 font-sans">结果 3：系统功耗</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_8_Figure_6.jpeg" width="760" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.16: 同时优化 LLC + DRAM 后，STFL 的 average system power 与 LP 非常接近。</li>
+<li class="ml-8">但 execution time 更短，所以最终 system energy 和 EDP 都更好。</li>
+<li class="ml-8">这说明 STFL 的价值不是“功耗更低很多”，而是<strong>在接近 LP 功耗下跑出更接近 HP 的时间</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="4-dram" class="text-2xl mt-2 font-sans">结果 4：只改 DRAM 的性能</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_8_Figure_11.jpeg" width="760" style="max-width: 92%; max-height: 190px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.17: 只改 DRAM I/O 时，STFL-DDR 的性能<strong>几乎追平 HP DRAM</strong>；少数应用上 <code>BD</code> 还会快 <code>1%-4%</code>。</li>
+<li class="ml-8">这说明 STFL-DDR 至少没有像传统 LP 接口那样，把低功耗直接换成明显的性能下滑。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="5" class="text-2xl mt-2 font-sans">结果 5：端到端性能</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_8_Figure_13.jpeg" width="760" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.18: 同时改 LLC + DRAM 后，STFL 相对 LP 把 end-to-end execution time 再降 <strong><code>7%</code></strong>。</li>
+<li class="ml-8">LP 会带来约 <strong><code>10%</code></strong> 的时间损失，而 STFL 把这个损失压到 <strong><code>&lt; 2%</code></strong>。</li>
+<li class="ml-8">最终，STFL 达到 HP baseline 的 <strong><code>98%</code></strong> 性能。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="6edp" class="text-2xl mt-2 font-sans">结果 6：EDP 与带宽</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_8_Figure_21.jpeg" width="760" style="max-width: 92%; max-height: 220px; object-fit: contain;"/></p>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/STFL-DDR_Improving_the_Energy-Efficiency_of_Memory_Interface_images/_page_9_Figure_14.jpeg" width="760" style="max-width: 92%; max-height: 170px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.19: STFL 把 system <code>EDP</code> 相对 binary encoding 在 LP/HP wires 上分别改善 <strong><code>15% / 25%</code></strong>。</li>
+<li class="ml-8">Fig.22: STFL-DDR 的平均带宽基本与 DDR4 持平，而 <code>LPDDR3 @ 800 MHz</code> 明显掉带宽。</li>
+<li class="ml-8">这两张图一起说明: <strong>STFL 的核心价值是把 LP 的能耗优势和 HP 的带宽优势拼在同一个 operating point 上</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">哪些场景更吃香</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 <strong>bandwidth-sensitive</strong> 的应用，STFL 相对 LP 的优势最明显，例如论文举的 <code>BT</code>，DRAM 带宽需求约 <strong><code>15 GBps</code></strong>。</li>
+<li class="ml-8">在 <code>BT</code> 上，LPDDR3 虽然 DRAM energy 下降更多，但会因带宽不足拉长执行时间，增加 static energy。</li>
+<li class="ml-8">反过来，对很多带宽压力不高的 workload，STFL 相对 LP 的 system-energy 增益就不会很大。</li>
+<li class="ml-8">所以这个设计的 sweet spot 很明确: <strong>需要 LP 级低功耗线，但又不能接受 LP 级带宽损失的系统</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">总结</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">STFL-DDR 最重要的贡献，是把 <strong>low-power signaling、transition-based coding、DDR-style clocking</strong> 做成了一个可闭环的接口设计。</li>
+<li class="ml-8">它没有试图让低功耗线拥有更高物理 transition speed，而是通过“<code>1</code> 稀疏化”规避连续翻转。</li>
+<li class="ml-8">结果上，它实现了一个很有吸引力的 operating point: <strong>接近 LP 的功耗，接近 HP 的吞吐</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>最强点</strong>: 这是一个很典型的 cross-layer paper，真正把 wire physics、编码约束和 full-system evaluation 串起来了。</li>
+<li class="ml-8"><strong>最值得怀疑的地方</strong>: “复用 LPDDR3 data wires + DDR4 clock/mode wires” 很聪明，但也让 industrial deployability 变得不那么直接。</li>
+<li class="ml-8"><strong>缺的实验</strong>: 没有真正把 <code>ECC</code>、高熵数据、更新一代的 DDR speed bin 纳入实测或更严密的 sensitivity study。</li>
+<li class="ml-8"><strong>后续方向</strong>: 做成 <strong>adaptive interface mode</strong> 会更有现实感，根据 workload 的 bandwidth demand 在 LP-like / STFL / HP-like 模式间切换。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

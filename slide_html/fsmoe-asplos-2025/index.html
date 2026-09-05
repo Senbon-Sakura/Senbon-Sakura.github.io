@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> fsmoe-asplos-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="fsmoe" class="text-2xl mt-2 font-sans">FSMoE</h1>
+<h2 id="fsmoe-moe" class="text-xl mt-2 pb-2 font-sans">FSMoE：灵活且可扩展的稀疏 MoE 训练系统</h2>
+<p class="font-serif my-1">Xinglin Pan, Wenxiang Lin, Lin Zhang, Shaohuai Shi, Zhenheng Tang, Rui Wang, Bo Li, Xiaowen Chu<br/>
+HKUST(GZ), Harbin Institute of Technology Shenzhen, HKUST<br/>
+ASPLOS 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-04-03</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: 现有 MoE training system 往往只 overlap <code>AlltoAll + expert compute</code>, 但在 <code>DP+MP+EP+ESP</code> 下, 真正的瓶颈是 <strong>inter-node / intra-node 通信与 backward gradient sync 的联合调度</strong>。</li>
+<li class="ml-8"><strong>方法</strong>: FSMoE 用 <strong>六模块抽象 + 在线 profiling + case-based schedule optimizer</strong>，并加入 <strong>adaptive gradient partitioning</strong>，分别优化 forward/backward 的 pipeline degree。</li>
+<li class="ml-8"><strong>结果</strong>: 在 <code>1458</code> 个配置化 MoE layers 上相对 Tutel 达到 <strong><code>1.18x-1.22x</code></strong>；在真实 GPT2/Mixtral 模型上相对 DS-MoE 达到 <strong><code>1.28x-3.01x</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="moe" class="text-2xl mt-2 font-sans">背景：MoE 层在做什么</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-02/Pan_-_2025_-_FSMoE_A_Flexible_and_Scalable_Training_System_for_Sparse_Mixture-of-Experts_Models_images/_page_3_Figure_4.jpeg" width="760" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">一个典型 sparse MoE layer 包含 <code>Gate</code>, <code>Order/I-Order</code>, <code>Experts</code> 三部分。</li>
+<li class="ml-8">每个 token 只激活 <code>top-k</code> experts，所以 <strong>active FLOPs 不高</strong>，但 <strong>数据重排与跨设备通信很多</strong>。</li>
+<li class="ml-8">真正难的不是单机算 experts，而是 <strong>把 token 精确送到正确 expert，再高效送回来</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">旧系统为什么不够好</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">现有系统如 <code>DeepSpeed-MoE</code>, <code>Tutel</code>, <code>PipeMoE</code> 大多针对特定 routing 或固定 schedule 做优化。</li>
+<li class="ml-8">在大规模训练里，MoE layer 同时引入:
+  <code>AlltoAll</code>, <code>AllGather</code>, <code>ReduceScatter</code>, <code>Gradient-AllReduce</code>, <code>expert compute</code>。</li>
+<li class="ml-8">论文给出的真实模型 breakdown 指出:
+  <strong>通信常占 MoE layer 时间的 <code>30%-60%</code>，不少场景总占比超过一半</strong>。</li>
+<li class="ml-8">所以问题不是 “把一个 kernel 做快一点”，而是 <strong>整个训练路径的任务编排没有做对</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="overlap" class="text-2xl mt-2 font-sans">关键观察：还有两层 overlap 没吃到</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-02/Pan_-_2025_-_FSMoE_A_Flexible_and_Scalable_Training_System_for_Sparse_Mixture-of-Experts_Models_images/_page_5_Figure_4.jpeg" width="760" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">在常见部署里，<code>MP</code> 与 <code>ESP</code> 往往对齐到单节点 GPU 数。</li>
+<li class="ml-8">这意味着 <code>ESP-AllGather / ESP-ReduceScatter</code> 通常是 <strong>intra-node</strong>，而 <code>AlltoAll / Gradient-AllReduce</code> 通常是 <strong>inter-node</strong>。</li>
+<li class="ml-8"><strong>洞察</strong>: 旧方案主要 overlap <code>AlltoAll + expert</code>，但没有系统性利用 <strong>节点内外通信的带宽分层</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="forward-backward-r" class="text-2xl mt-2 font-sans">第二个观察：forward 和 backward 不该共用一个 r</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">旧系统常把同一个 pipeline degree <code>r</code> 同时用于 forward 与 backward。</li>
+<li class="ml-8">但 backward 多了 <code>weight gradient</code> 计算与 <code>Gradient-AllReduce</code>，代价结构已经变了。</li>
+<li class="ml-8">论文在 <code>1458</code> 个配置上发现:
+  <strong>有 <code>912</code> 个 case 的 forward / backward 最优 <code>r</code> 不同</strong>。</li>
+<li class="ml-8">所以如果 schedule 只调一次, 实际上经常在一半 phase 上是次优的。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="fsmoe-moe" class="text-2xl mt-2 font-sans">系统总览：FSMoE 把 MoE 拆成六模块</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Gate</code>: token routing</li>
+<li class="ml-8"><code>Order / I-Order</code>: <code>(B, L, M) &lt;-&gt; (E, T, M)</code> 数据布局变换</li>
+<li class="ml-8"><code>Dispatch / Combine</code>: token-to-expert 通信算法</li>
+<li class="ml-8"><code>Expert</code>: FFN 计算本体</li>
+<li class="ml-8">外加 hooks: 支持压缩、多模态输入重排、定制前后处理</li>
+</ul>
+<p class="font-serif my-1">FSMoE 的核心不是重新写一个固定 MoE kernel，而是让 <strong>前端 API 与后端 scheduler 解耦</strong>:<br/>
+开发者替换 gate/order/dispatch/expert 实现后，调度器仍可基于 profiling 自动找 schedule。</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1-flexibility" class="text-2xl mt-2 font-sans">机制1：统一抽象解决 flexibility</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">论文预置了 <code>4</code> 类 routing:
+  <code>GShard</code>, <code>Sigmoid</code>, <code>X-MoE</code>, <code>SoftMoE</code>。</li>
+<li class="ml-8">预置了 <code>2</code> 类 ordering:
+  <code>GShard ordering</code> 与 <code>Tutel ordering</code>。</li>
+<li class="ml-8">预置了多种 AlltoAll:
+  <code>NCCL-A2A</code>, <code>1DH-A2A</code>, <code>2DH-A2A</code>。</li>
+<li class="ml-8">重点不是“支持得多”，而是 <strong>支持新模块时不用重写 scheduler</strong>。</li>
+<li class="ml-8">这点很关键，因为 MoE routing 机制在 2024-2025 迭代非常快。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2" class="text-2xl mt-2 font-sans">机制2：把节点内外通信一起编排</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-02/Pan_-_2025_-_FSMoE_A_Flexible_and_Scalable_Training_System_for_Sparse_Mixture-of-Experts_Models_images/_page_7_Figure_6.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">FSMoE 把输入切成多个 chunks，按 pipeline 依次流过 <code>AlltoAll</code>, <code>AG/RS</code>, <code>expert</code>, <code>Gradient-AllReduce</code>。</li>
+<li class="ml-8">关键变化不是多做 overlap，而是 <strong>把 inter-node 与 intra-node 两类通信解耦后同时隐藏</strong>。</li>
+<li class="ml-8">对 backward 来说，最后一个 chunk 之后紧接 <code>Gradient-AllReduce</code>，尽量吃掉原本裸露的同步时间。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="3" class="text-2xl mt-2 font-sans">机制3：性能模型</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">核心模型:
+  <code>$t_{*,r} = \alpha_* + \frac{n_*}{r}\beta_*$</code></li>
+<li class="ml-8"><code>AlltoAll</code>, <code>AG</code>, <code>RS</code>, <code>expert</code> 都按这类模型估时。</li>
+<li class="ml-8">最优 <code>r</code> 就是在 <strong>overlap 收益</strong> 与 <strong>startup cost</strong> 之间折中。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="case-r" class="text-2xl mt-2 font-sans">四种 case 决定用哪个 r</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">作者把主要瓶颈归类成 <code>4</code> 种 case:
+  inter-node 主导、expert 主导、AlltoAll 主导、intra-node 主导。</li>
+<li class="ml-8">每个 case 写出对应的 <code>t^{moe}(r)</code>，再用 <code>SLSQP</code> 求局部最优。</li>
+<li class="ml-8">最后取 <code>4</code> 个候选中最小时延对应的 <code>r</code>。</li>
+<li class="ml-8">这不是严格全局最优证明，但它把复杂依赖压成了 <strong>可执行的系统优化器</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="4" class="text-2xl mt-2 font-sans">机制4：切梯度</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>$n_{first}^{i} = g_{grad}^{inv}(\min(t_{grad}(n_{grad}^{i-1}), t_{olp}^{i}))$</code></li>
+<li class="ml-8">先估每层可隐藏窗口，再跨层分配剩余梯度。</li>
+<li class="ml-8">关键价值: <strong>梯度块大小跟 layer overlap 窗口一起自适应</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">一次训练迭代怎么走</h1>
+<ol>
+<li class="ml-8">输入进入 <code>Gate + Order</code>，被映射到 <code>(E, T, M)</code> 布局。</li>
+<li class="ml-8"><code>Dispatch</code> 把 token 沿 <code>EP</code> 送往对应 experts；若 expert 被 shard，再做 <code>ESP-AllGather</code>。</li>
+<li class="ml-8"><code>Expert</code> 计算完成后，做 <code>ESP-ReduceScatter + Combine</code> 返回原布局。</li>
+<li class="ml-8">backward 阶段同时插入切分后的 <code>Gradient-AllReduce</code>，并按 phase-specific <code>r</code> 运行。</li>
+<li class="ml-8">调度器实际优化的是:
+   <strong>不要让 inter-node、intra-node、compute 中任意一个长时间裸奔</strong>。</li>
+</ol></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">系统代价与前提</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>不是新硬件</strong>: 这是 runtime / system design，主要代价是实现复杂度而非 area。</li>
+<li class="ml-8"><strong>需要 profiling</strong>: 在新集群上要先测 <code>GEMM + NCCL collectives</code>，再拟合 <code>\alpha/\beta</code>。</li>
+<li class="ml-8"><strong>需要手工 backward</strong>: 论文明确为支持 phase-specific schedule 而手写 backward path。</li>
+<li class="ml-8"><strong>拓扑前提较强</strong>: 最佳收益依赖 <code>N_MP = N_ESP = GPUs per node</code> 这类部署。</li>
+<li class="ml-8"><strong>结论</strong>: 这是一个很实用的系统优化，但不是“任何拓扑都稳赚”的通用银弹。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>平台</strong>:
+  <code>Testbed-A = 48 GPU</code>, <code>Testbed-B = 32 GPU</code></li>
+<li class="ml-8"><strong>软件栈</strong>:
+  <code>Ubuntu 20.04</code>, <code>CUDA 11.3</code>, <code>PyTorch 1.12</code>, <code>NCCL 2.12</code></li>
+<li class="ml-8"><strong>配置化实验</strong>:
+  共 <code>1458</code> 个 attention/MoE layer 组合</li>
+<li class="ml-8"><strong>真实模型</strong>:
+  <code>GPT2-XL</code>-based MoE, <code>Mixtral-7B</code>, <code>Mixtral-22B</code></li>
+<li class="ml-8"><strong>基线</strong>:
+  <code>DeepSpeed-MoE</code>, <code>Tutel/PipeMoE</code>, <code>PipeMoE+Lina</code></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">配置化层实验：增益很稳定</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Schedule</th>
+<th style="text-align: center;">Testbed-A</th>
+<th style="text-align: center;">Testbed-B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Tutel</td>
+<td style="text-align: center;">1.00x</td>
+<td style="text-align: center;">1.00x</td>
+</tr>
+<tr>
+<td style="text-align: left;">Tutel-Improved</td>
+<td style="text-align: center;">1.09x</td>
+<td style="text-align: center;">1.08x</td>
+</tr>
+<tr>
+<td style="text-align: left;">FSMoE-No-IIO</td>
+<td style="text-align: center;">1.12x</td>
+<td style="text-align: center;">1.16x</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>FSMoE</strong></td>
+<td style="text-align: center;"><strong>1.18x</strong></td>
+<td style="text-align: center;"><strong>1.22x</strong></td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Tutel -&gt; Tutel-Improved</code> 只多出约 <code>8%-9%</code>，说明只 overlap non-MoE 部分不够。</li>
+<li class="ml-8"><code>FSMoE-No-IIO -&gt; FSMoE</code> 还能再涨，说明 <strong>inter/intra-node overlap</strong> 是真实贡献。</li>
+<li class="ml-8">这一页最重要的信息是:
+  <strong>adaptive gradient partitioning + communication co-scheduling 都是有效增量</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ds-moe" class="text-2xl mt-2 font-sans">端到端模型：对 DS-MoE 提升更明显</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-02/Pan_-_2025_-_FSMoE_A_Flexible_and_Scalable_Training_System_for_Sparse_Mixture-of-Experts_Models_images/_page_12_Figure_2.jpeg" width="800" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">在真实 GPT2/Mixtral 模型上，FSMoE 相对 <code>DS-MoE</code> 达到 <strong><code>1.28x-3.01x</code></strong>。</li>
+<li class="ml-8">相对 <code>Tutel</code> 平均还能有 <strong><code>1.19x</code></strong>，优于 <code>Tutel-Improved</code> 与 <code>PipeMoE+Lina</code>。</li>
+<li class="ml-8">主要原因: baseline 偏保守, 且 FSMoE 更好地隐藏 <code>Gradient-AllReduce</code> 与多层通信。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="pp-gating" class="text-2xl mt-2 font-sans">鲁棒性：PP 与多种 gating 也成立</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">开启 <code>PP (N_PP = 2)</code> 后，FSMoE 相对 <code>DS-MoE</code> 仍有 <strong><code>2.46x</code> 平均提速</strong>。</li>
+<li class="ml-8">在 <code>Testbed-A</code> 上随 <code>L</code> 和 <code>P</code> 扩展，FSMoE 相对 Tutel 大致维持 <strong><code>1.16x-1.20x</code></strong>。</li>
+<li class="ml-8">对不同 gating function 的 GPT2-XL:
+  <code>GShard 1.37x</code>, <code>X-MoE 1.42x</code>, <code>Sigmoid 1.37x</code>, <code>EC 1.33x</code>。</li>
+<li class="ml-8">所以这篇论文不是“只在一种 gate 或一种模型上有效”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">性能模型本身是可信的</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-02/Pan_-_2025_-_FSMoE_A_Flexible_and_Scalable_Training_System_for_Sparse_Mixture-of-Experts_Models_images/_page_11_Figure_9.jpeg" width="780" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>GEMM</code> 与四类 collective 都能被线性模型高精度拟合。</li>
+<li class="ml-8">文中 <code>r^2</code> 很高:
+  <code>GEMM 0.9987</code>, <code>AllReduce 0.9999896</code>, <code>AlltoAll 0.9999</code>。</li>
+<li class="ml-8">这让“先 profiling 再求 schedule”成立，但 <strong>不代表跨平台永远稳定</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>贡献1</strong>: 用六模块抽象把 MoE implementation 与 scheduler 解耦，提升 framework flexibility。</li>
+<li class="ml-8"><strong>贡献2</strong>: 联合调度 <code>AlltoAll</code>, <code>AG/RS</code>, <code>expert compute</code>, <code>Gradient-AllReduce</code>，把多层通信 overlap 做得更彻底。</li>
+<li class="ml-8"><strong>贡献3</strong>: 用 phase-specific <code>r</code> 与 adaptive gradient partitioning，在真实 MoE 训练中拿到 <strong>稳定的系统级提速</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>最强点</strong>: 问题抓得准。它没有把瓶颈简化为“优化 AlltoAll”，而是看到 <strong>多并行范式下的联合调度问题</strong>。</li>
+<li class="ml-8"><strong>最优雅的地方</strong>: <code>forward/backward</code> 分开找 <code>r</code>，再把 <code>Gradient-AllReduce</code> 纳入同一优化框架。</li>
+<li class="ml-8"><strong>脆弱假设</strong>: 高收益依赖 <code>MP/ESP</code> 与节点拓扑对齐，以及线性性能模型足够稳定。</li>
+<li class="ml-8"><strong>缺失实验</strong>: 没有在更现代的 H100 级多节点生产栈上证明收益，也缺少更工业化 baseline。</li>
+<li class="ml-8"><strong>后续方向</strong>: 做 online model update，把 schedule 从 “训练前求一次” 扩展到 <strong>trace-driven 自适应调度</strong>。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="x5-fullscreen" content="true">
+<meta name="full-screen" content="yes">
+<meta name="theme-color" content="#317EFB" />
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=0" name="viewport">
+<meta name="description" content="🚀 0. 高层概览（High-level Overview） 本文评审的论文是 “Ghost Arbitration: Mitigating Interconnect Side-Channel Timing Attacks in GPU”，工作背景是：现代高性能 GPU 通过片上互连（Network-on-Chip, NoC）连接大量 SM、L2、内存控制器等资源，而 共享互连带来的竞争与排队">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Ghost Arbitration——缓解 GPU 互连侧信道定时攻击的安全仲裁机制深度解析">
+<meta property="og:url" content="http://example.com/2026/02/20/Ghost_Arbitration_Mitigating_Interconnect_Side-Channel_Timing_Attacks_in_GPU/index.html">
+<meta property="og:site_name" content="Welcome to Zongwu&#39;s Research World ✨">
+<meta property="og:description" content="🚀 0. 高层概览（High-level Overview） 本文评审的论文是 “Ghost Arbitration: Mitigating Interconnect Side-Channel Timing Attacks in GPU”，工作背景是：现代高性能 GPU 通过片上互连（Network-on-Chip, NoC）连接大量 SM、L2、内存控制器等资源，而 共享互连带来的竞争与排队">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2026-02-20T11:04:02.000Z">
+<meta property="article:modified_time" content="2026-09-05T01:42:11.125Z">
+<meta property="article:author" content="John Doe">
+<meta property="article:tag" content="Arbitration">
+<meta property="article:tag" content="GPU Architecture">
+<meta property="article:tag" content="Microarchitecture Security">
+<meta property="article:tag" content="Network-on-Chip">
+<meta property="article:tag" content="Side-Channel Attack">
+<meta name="twitter:card" content="summary">
+
+
+<title >Ghost Arbitration——缓解 GPU 互连侧信道定时攻击的安全仲裁机制深度解析</title>
+
+<!-- Favicon -->
+
+    <link href='/images/sjtu.png?v=2.2.7' rel='icon' type='image/png' sizes='16x16' ></link>
+
+
+    <link href='/images/sjtu.png?v=2.2.7' rel='icon' type='image/png' sizes='32x32' ></link>
+
+
+    <link href='/images/sjtu.png?v=2.2.7' rel='apple-touch-icon' sizes='180x180' ></link>
+
+
+    <link href='/site.webmanifest' rel='manifest' ></link>
+
+
+<!-- Plugin -->
+
+
+
+
+    
+<link rel="stylesheet" href="/css/plugins/bootstrap.row.css">
+
+    
+<link rel="stylesheet" href="https://unpkg.com/@fancyapps/ui@4.0/dist/fancybox.css">
+
+    
+    
+<link rel="stylesheet" href="https://unpkg.com/katex@latest/dist/katex.min.css">
+
+
+
+
+
+<!-- Icon -->
+
+    
+<link rel="stylesheet" href="/css/plugins/font-awesome.min.css">
+
+
+
+
+<!-- Variable -->
+<script>window.ASYNC_CONFIG = {"hostname":"example.com","author":"John Doe","root":"/","typed_text":["Solvitur ambulando."],"theme_version":"2.2.7","theme":{"switch":true,"default":"style-light"},"favicon":{"logo":"/images/sjtu.png","icon16":"/images/sjtu.png","icon32":"/images/sjtu.png","apple_touch_icon":"/images/sjtu.png","webmanifest":"/site.webmanifest","visibilitychange":true,"hidden":"failure.ico","show_text":"(/≧▽≦/)咦！又好了！","hide_text":"(●—●)喔哟，崩溃啦！"},"i18n":{"placeholder":"Searching...","empty":"We didn't find any results for the search: ${query}.","hits":"${hits} results found","hits_time":"${hits} results found in ${time} ms","author":"Post author: ","copyright_link":"Post link: ","copyright_license_title":"Copyright Notice: ","copyright_license_content":"All articles in this blog are licensed under undefined unless otherwise stated.","copy_success":"Copied","copy_failure":"Copy failed","open_read_mode":"Enter reading mode","exit_read_mode":"Exit reading mode","notice_outdate_message":"It has been undefined days since the last update, the content of the article may be outdated.","sticky":"TOP","just":"Just","min":"minutes ago","hour":"hours ago","day":"days ago","month":"months ago"},"swup":false,"plugin":{"flickr_justified_gallery":"https://unpkg.com/flickr-justified-gallery@latest/dist/fjGallery.min.js"},"icons":{"sun":"far fa-sun","moon":"far fa-moon","play":"fas fa-play","email":"far fa-envelope","next":"fas fa-arrow-right","calendar":"far fa-calendar-alt","clock":"far fa-clock","user":"far fa-user","back_top":"fas fa-arrow-up","close":"fas fa-times","search":"fas fa-search","reward":"fas fa-hand-holding-usd","toc_tag":"fas fa-th-list","read":"fas fa-book-reader","arrows":"fas fa-arrows-alt-h","double_arrows":"fas fa-angle-double-down","copy":"fas fa-copy"},"icontype":"font","highlight":{"plugin":"highlighjs","theme":true,"copy":true,"lang":false,"title":"mac","height_limit":200},"toc":{"post_title":false},"live_time":{"start_time":"02/5/2026 20:00:00","prefix":"The blog has been lovely to run undefined day"},"danmu":{"enable":false,"el":".trm-banner"},"covers":["/img/block.jpg","https://img2.wallspic.com/previews/7/6/8/1/7/171867/171867-wu_kong-chao_ji_sai_ya_ren-sai_ya_ren-zamasu-long_zhu-500x.jpg","https://img3.wallspic.com/previews/2/0/1/8/6/168102/168102-yi_shu-ka_tong-mian_bu_biao_qing-kuai_le_de-ji_qie-500x.jpg","https://img2.wallspic.com/previews/2/6/4/3/7/173462/173462-qi_fen-zi_se_de-zi_ran_jing_guan-yu_hui-de_ping_xian-500x.jpg","https://img2.wallspic.com/previews/3/3/9/1/3/131933/131933-mo_xing-xiao_jie-huang_se_de-nu_hai-fa_xing-500x.jpg","https://img1.wallspic.com/previews/8/3/4/6/2/126438/126438-wei_lai_zhu_yi-shu_ma_yi_shu-jie_duan-zi_ben_shi-yi_shu-500x.jpg","https://img2.wallspic.com/previews/0/1/5/0/7/170510/170510-guang-azure-zi_se_de-zi_ran_huan_jing-zi_ran_jing_guan-500x.jpg","https://img2.wallspic.com/previews/3/6/9/6/5/156963/156963-yi_shu-qi_fen-yu_hui-shou_shi-ren_men_zai_zi_ran_jie-500x.jpg","https://img1.wallspic.com/previews/0/9/3/5/6/165390/165390-qi_fen-zi_se_de-zi_ran_huan_jing-zi_ran_jing_guan-tian_wen_xue_dui_xiang-500x.jpg","https://img3.wallspic.com/previews/2/8/6/1/7/171682/171682-yi_kuai-xing_zhi-ye_ti-yi_shu-shui_xia-500x.jpg","https://img1.wallspic.com/previews/7/1/9/9/89917/89917-bo_xi_ta_nuo-an_zhuang_de_feng_jing-cheng_shi-suo_lun_tuo-shan_zhan-500x.jpg","https://img1.wallspic.com/previews/6/2/3/5/6/165326/165326-pang_ke2077-pang_ke-qi_fen-xing_zhi-zi_se_de-500x.jpg","https://img2.wallspic.com/previews/8/9/4/5/6/165498/165498-ka_tong-tao-pin_hong_se-zhang_zhang_de_tou_fa-ji_qie-500x.jpg","https://img3.wallspic.com/previews/5/7/4/2/7/172475/172475-yi_shu-tao-tou_fa-ka_tong-500x.jpg","https://img2.wallspic.com/previews/5/0/9/0/70905/70905-hai_yang-ma_er_dai_fu-tian_kong-du_jia_cun-huan_jiao-500x.jpg","https://img3.wallspic.com/previews/4/3/4/8/6/168434/168434-xing_zhi-zi_ran_jing_guan-dan_huang-shui_dao-zhi_bei-500x.jpg","https://img2.wallspic.com/previews/6/5/4/5/6/165456/165456-giy_fu_gang-e_mo_sha_shoukimetsu_no_yaiba-shan_zi_de_yi_shu-zi_se_de-dian_lan_se_de-500x.jpg","https://img1.wallspic.com/previews/5/4/0/4/7/174045/174045-jian_ying-qi_fen-ren_men_zai_zi_ran_jie-tian_wen_xue_dui_xiang-yi_shu-500x.jpg","https://img1.wallspic.com/previews/9/3/1/6/5/156139/156139-feng_jing_hua-yi_shu-shu_ma_yi_shu-qi_fen-sheng_tai_qu-500x.jpg","https://img2.wallspic.com/previews/7/6/4/5/7/175467/175467-wo_de_xue_shu_jie_de_ying_xiong-tao-yi_shu-ka_tong-azure-500x.jpg","https://img1.wallspic.com/previews/3/7/0/0/7/170073/170073-liang_ge_ling-ka_tong-shou_shi-chuang_zao_xing_de_yi_shu-hong_se_de-500x.jpg","https://img1.wallspic.com/previews/1/8/3/6/6/166381/166381-shi_zi-xin_ba-bai_se_shi_zi-hu_xu-mao_ke-500x.jpg","https://img3.wallspic.com/previews/4/2/2/3/7/173224/173224-ri_luo-shui_zi_yuan-qi_fen-yu_hui-zi_se_de-500x.jpg","https://img1.wallspic.com/previews/7/5/7/9/6/169757/169757-ji_bo_li_de_bo_wu_guan-zi_ran_jing_guan-yi_shu-ji_yun-500x.jpg","https://img1.wallspic.com/previews/5/2/0/6/7/176025/176025-qi_fen-tian_wen_xue_dui_xiang-yi_shu-dian_lan_se_de-yuan_quan-500x.jpg","https://img3.wallspic.com/previews/6/5/8/1/4/141856/141856-hen_ku_de-hui_hua-yu_yan_jing_tou-zhai_nan-tu_xing_she_ji-500x.jpg","https://img1.wallspic.com/previews/2/1/6/5/6/165612/165612-kimetsu_no_yaiba-e_mo_sha_shoukimetsu_no_yaiba-tao-tou_fa-wai_tao-500x.jpg","https://img3.wallspic.com/previews/5/1/0/2/4/142015/142015-feng_ge-ka_ka_xi_qi_mu-huo_ying_ren_zhe-tu_xing_she_ji-shi_jue_yi_shu-500x.jpg","https://img1.wallspic.com/previews/8/8/7/8/5/158788/158788-e_mo_sha_shoukimetsu_no_yaiba-shnen_man_hua-tao-ka_tong-azure-500x.jpg"],"search":{"enable":true,"type":"local","href":"https://www.google.com/search?q=site:","domain":null,"path":"search.xml"}};</script>
+<script id="async-page-config">window.PAGE_CONFIG = {"isPost":true,"isHome":false,"postUpdate":"2026-09-05 01:42:11"};</script>
+
+<!-- Theme mode css -->
+<link data-swup-theme rel="stylesheet" href="/css/index.css?v=2.2.7" id="trm-switch-style">
+<script>
+    let defaultMode = ASYNC_CONFIG.theme.default !=='auto' ?  ASYNC_CONFIG.theme.default : (window.matchMedia("(prefers-color-scheme: light)").matches ? 'style-light' : 'style-dark')
+    let catchMode = localStorage.getItem('theme-mode') || defaultMode;
+    let type = catchMode === 'style-dark' ? 'add' : 'remove';
+    document.documentElement.classList[type]('dark')
+</script>
+
+<!-- CDN -->
+
+
+    
+    
+
+
+
+<!-- Site Analytics -->
+
+ 
+<meta name="generator" content="Hexo 8.1.1"></head>
+
+<body class="">
+
+  <!-- app wrapper -->
+  <div class="trm-app-frame">
+
+    <!-- page preloader -->
+    <div class="trm-preloader">
+    <div class="trm-holder">
+        <div class="preloader">
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+        </div>
+    </div>
+</div>
+    <!-- page preloader end -->
+
+    <!-- change mode preloader -->
+    <div class="trm-mode-swich-animation-frame">
+    <div class="trm-mode-swich-animation">
+        <i class="i-sun"><i class="iconfont far fa-sun"></i></i>
+        <div class="trm-horizon"></div>
+        <i class="i-moon"><i class="iconfont far fa-moon"></i></i>
+    </div>
+</div>
+    <!-- change mode preloader end -->
+
+      <!-- scroll container -->
+      <div id="trm-dynamic-content" class="trm-swup-animation">
+        <div id="trm-scroll-container" class="trm-scroll-container" style="opacity: 0">
+            <!-- top bar -->
+            <header class="trm-top-bar">
+	<div class="container">
+		<div class="trm-left-side">
+			<!-- logo -->
+<a href="/" class="trm-logo-frame trm-anima-link">
+    
+        <img alt="logo" src="/images/sjtu.png">
+    
+    
+        <div class="trm-logo-text">
+            Wang<span>Zongwu</span>
+        </div>
+    
+</a>
+<!-- logo end -->
+		</div>
+		<div class="trm-right-side">
+			<!-- menu -->
+<div class="trm-menu">
+    <nav>
+        <ul>
+            
+            <li class="menu-item-has-children ">
+                <a  href="/" target="">
+                    home
+                </a>
+                
+                <ul>
+                    
+                    <li>
+                        <a  href="/archives/" target="">
+                            archives
+                        </a>
+                    </li>
+                    
+                </ul>
+                
+            </li>
+            
+            <li class="menu-item-has-children ">
+                <a data-no-swup href="/categories/" target="">
+                    categories
+                </a>
+                
+            </li>
+            
+            <li class="menu-item-has-children ">
+                <a data-no-swup href="/tags/" target="">
+                    tags
+                </a>
+                
+            </li>
+            
+            <li class="menu-item-has-children ">
+                <a  href="/slides/" target="">
+                    Slides
+                </a>
+                
+            </li>
+            
+        </ul>
+    </nav>
+</div>
+<!-- menu end -->
+			
+    <!-- mode switcher place -->
+    <div class="trm-mode-switcher-place">
+        <div class="trm-mode-switcher">
+            <i class="iconfont far fa-sun"></i>
+            <input class="tgl tgl-light" id="trm-swich" type="checkbox">
+            <label class="trm-swich" for="trm-swich"></label>
+            <i class="iconfont far fa-moon"></i>
+        </div>
+    </div>
+    <!-- mode switcher place end -->
+
+			
+    
+    <div id="trm-search-btn" class="trm-search-btn">
+        <i class="iconfont fas fa-search"></i>
+    </div>
+     
+
+		</div>
+		<div class="trm-menu-btn">
+			<span></span>
+		</div>
+	</div>
+</header>
+            <!-- top bar end -->
+
+            <!-- body -->
+            
+<div class="trm-content-start">
+    <!-- banner -->
+    <div class="trm-banner">
+    
+    <!-- banner video cover -->
+    <video autoplay="autoplay" loop muted playsinline webkit-playinginline class="trm-banner-cover">
+        <source src="/videos/autumn20190924.mp4" type='video/mp4; codecs="avc1.42E01E, mp4a.40.2"'>
+        Your browser does not support HTML5 video.
+    </video>
+    <!-- banner video cover end -->
+    
+
+    <!-- banner content -->
+    <div class="trm-banner-content trm-overlay">
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-4"></div>
+                <div class="col-lg-8">
+
+                    <!-- banner title -->
+                    <div class="trm-banner-text">
+                        <div class="trm-label trm-mb-20">
+                            NEWS LETTER
+                        </div>
+                        <h1 class="trm-mb-30 trm-hsmb-font">
+                            Ghost Arbitration——缓解 GPU 互连侧信道定时攻击的安全仲裁机制深度解析
+                        </h1>
+
+                        
+                            <ul class="trm-breadcrumbs trm-label">
+                                <li>
+                                    <a href="/" class="trm-anima-link">Home</a>
+                                </li>
+                                <li>
+                                    <span>
+                                        2026
+                                    </span>
+                                </li>
+                            </ul>
+                        
+                    </div>
+                    <!-- banner title end -->
+
+                    <!-- scroll hint -->
+                    <span id="scroll-triger" class="trm-scroll-hint-frame">
+                        <div class="trm-scroll-hint"></div>
+                        <span class="trm-label">Scroll down</span>
+                    </span>
+                    <!-- scroll hint end -->
+
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- banner content end -->
+</div>
+
+    <!-- banner end -->
+    <div class="container">
+        <div class="row">
+            <div class="trm-page-sidebar col-lg-4 hidden-sm">
+                <!-- main card -->
+                <div class="trm-main-card-frame trm-sidebar">
+    <div class="trm-main-card"> 
+        <!-- card header -->
+<div class="trm-mc-header">
+    <div class="trm-avatar-frame trm-mb-20">
+        <img alt="Avatar" class="trm-avatar" src="/img/avatar.jpg">
+    </div>
+    <h5 class="trm-name trm-mb-15">
+        Welcome to Zongwu&#39;s Science Hub ✨
+    </h5>
+    
+        <div class="trm-label">
+            
+            <span class="trm-typed-text">
+                <!-- Words for theme.user.typedText -->
+            </span>
+        </div>
+    
+</div>
+<!-- card header end -->
+        <!-- sidebar social -->
+
+<div class="trm-divider trm-mb-40 trm-mt-40"></div>
+<div class="trm-social">
+    
+        <a href="https://github.com" title="github" rel="nofollow" target="_blank">
+            <i class="iconfont fab fa-github"></i>
+        </a>
+    
+        <a href="https://zongwuwang.github.io" title="homepage" rel="nofollow" target="_blank">
+            <i class="iconfont fas fa-home"></i>
+        </a>
+    
+</div>
+
+<!-- sidebar social end -->
+        <!-- info -->
+<div class="trm-divider trm-mb-40 trm-mt-40"></div>
+<ul class="trm-table trm-mb-20">
+    
+        <li>
+            <div class="trm-label">
+                Residence:
+            </div>
+            <div class="trm-label trm-label-light">
+                Shanghai
+            </div>
+        </li>
+    
+        <li>
+            <div class="trm-label">
+                Age:
+            </div>
+            <div class="trm-label trm-label-light">
+                18
+            </div>
+        </li>
+    
+</ul>
+<!-- info end -->
+
+        
+    <div class="trm-divider trm-mb-40 trm-mt-40"></div>
+    <!-- action button -->
+    <div class="text-center">
+        <a href="mailto:wangzongwu@sjtu.edu.cn" class="trm-btn">
+            Contact Me
+            <i class="iconfont far fa-envelope"></i>
+        </a>
+    </div>
+    <!-- action button end -->
+
+    </div>
+</div>
+                <!-- main card end -->
+            </div>
+            <div class="trm-page-content col-lg-8">
+                <div id="trm-content" class="trm-content">
+                    <div class="trm-post-info row hidden-sm">
+    <div class="col-sm-4">
+        <div class="trm-card trm-label trm-label-light text-center">
+            <i class="iconfont far fa-calendar-alt trm-icon"></i><br>
+            02/20
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="trm-card trm-label trm-label-light text-center">
+            <i class="iconfont far fa-clock trm-icon"></i><br>
+            11:04
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div id="post-author" class="trm-card trm-label trm-label-light text-center">
+            <i class="iconfont far fa-user trm-icon"></i><br>
+            John Doe
+        </div>
+    </div>
+</div>
+<div class="trm-card ">
+    <article id="article-container" class="trm-publication">
+    <h1 id="0-高层概览high-level-overview"><a class="markdownIt-Anchor" href="#0-高层概览high-level-overview"></a> 🚀 0. 高层概览（High-level Overview）</h1>
+<p>本文评审的论文是 <strong>“Ghost Arbitration: Mitigating Interconnect Side-Channel Timing Attacks in GPU”</strong>，工作背景是：现代高性能 GPU 通过片上互连（Network-on-Chip, <strong>NoC</strong>）连接大量 SM、L2、内存控制器等资源，而 <strong>共享互连带来的竞争与排队延迟本身就是一个高分辨率的侧信道</strong>。作者系统性地分析了 GPU NoC 仲裁策略如何被利用来构造精细粒度的定时侧信道，并以 <strong>RSA 密钥比特泄露</strong> 为具体案例，展示在真实 GPU 上发起攻击的可行性。</p>
+<p>论文的核心贡献是提出一类新的 <strong>“ghost arbitration” 安全仲裁机制</strong>，通过在仲裁逻辑内部维护“幽灵请求（ghost requests）”及其计数器状态，使攻击者即便通过精心构造的通信模式来操控仲裁状态，也无法从自身观测到的延迟中可靠推断受害者的访问行为。进一步，作者提出 <strong>“weighted ghost arbitration”</strong>，在保持安全性的前提下显著降低性能开销，相比严格时间片式的 <strong>SRR（Strict Round-Robin）</strong> 等以往安全仲裁机制，能在 <strong>性能–安全</strong> 权衡上取得更好的折中。</p>
+<p>从会议风格与内容看，该工作非常契合 <strong>MICRO/HPCA/ISCA</strong> 等体系结构顶会的风格：有真实系统攻击展示、有形式化安全直觉讨论，也有基于 GPGPU-Sim + Booksim 的大规模性能评估和 RTL 综合的面积/功耗分析。</p>
+<hr />
+<h1 id="1-问题与定位problem-positioning"><a class="markdownIt-Anchor" href="#1-问题与定位problem-positioning"></a> 🧭 1. 问题与定位（Problem &amp; Positioning）</h1>
+<h2 id="11-论文要解决的本质问题"><a class="markdownIt-Anchor" href="#11-论文要解决的本质问题"></a> 1.1 论文要解决的本质问题</h2>
+<ul>
+<li><strong>本质问题：</strong> 在共享的 GPU 片上互连中，传统仲裁器（如 round-robin）为了追求 <strong>公平性与高吞吐</strong>，在内部维护状态（如优先级指针），这些状态对请求模式高度敏感，从而形成一个 <strong>高容量、高分辨率的定时侧信道</strong>。攻击者可以通过构造流量模式并观测自身请求的排队延迟，推断受害者的访问行为甚至秘密数据（如密钥比特）。</li>
+<li><strong>核心挑战：</strong>
+<ul>
+<li>如何在 <strong>不大幅牺牲带宽利用率和吞吐</strong> 的前提下，打破“互连竞争-&gt;可观测延迟-&gt;秘密泄露”这条链路。</li>
+<li>如何设计一种仲裁机制，使得攻击者即使完全知道仲裁算法，仍然难以构造稳定的信道。</li>
+</ul>
+</li>
+</ul>
+<p>换句话说，这是一个 <strong>microarchitecture-level security vs. performance co-design</strong> 问题：要在仲裁级别做“加固”，而不是简单用粗暴的 <strong>TDMA/SRR</strong> 牺牲性能换安全。</p>
+<h2 id="12-在研究版图中的位置"><a class="markdownIt-Anchor" href="#12-在研究版图中的位置"></a> 1.2 在研究版图中的位置</h2>
+<ul>
+<li><strong>相对于已有 GPU 侧信道工作：</strong> 过去很多 GPU 侧信道聚焦于 <strong>缓存（L2 / shared memory）、TLB、调度队列</strong> 等资源，而本文更聚焦于 <strong>NoC 仲裁</strong> 这一较少被精细建模的组件，提出了 <strong>interconnect-gram</strong> 概念用于描述互连层面的特征，可用于 kernel 指纹识别（fingerprinting）。</li>
+<li><strong>相对于 NoC 安全仲裁工作：</strong> 既有工作（如 SurfNoC、时间划分型仲裁、速率限制等）往往通过 <strong>强隔离/时间切片</strong> 获得形式化安全性，但通常带来显著 <strong>吞吐损失与资源浪费</strong>。本文通过引入 ghost/weighted ghost 机制，在保持安全性的前提下，尽量接近 baseline round-robin 的性能。</li>
+<li><strong>应用场景：</strong>
+<ul>
+<li>公有云/多租户 GPU 平台（MIG、MPS 等）中跨租户侧信道。</li>
+<li>单租户但多 kernel 共享 GPU 的场景中，敏感 kernel 之间的互相窃听。</li>
+</ul>
+</li>
+</ul>
+<p>整体来看，这篇论文更多是一个 <strong>架构+安全交叉</strong> 的工作，而非纯密码/系统攻击论文，重点在于：<strong>从 NoC 仲裁视角重新设计 secure arbitration</strong>。</p>
+<hr />
+<h1 id="2-核心思想与技术贡献core-ideas-contributions"><a class="markdownIt-Anchor" href="#2-核心思想与技术贡献core-ideas-contributions"></a> 💡 2. 核心思想与技术贡献（Core Ideas &amp; Contributions）</h1>
+<h2 id="21-威胁模型与攻击构造"><a class="markdownIt-Anchor" href="#21-威胁模型与攻击构造"></a> 2.1 威胁模型与攻击构造</h2>
+<ul>
+<li><strong>攻击参与者：</strong>
+<ul>
+<li><strong>Sender（攻击者的一部分）</strong>：通过向 L2 / 互连发送大量请求来调制信号，比特 ‘1’ 用高强度流量表示，比特 ‘0’ 用低强度或无流量表示。</li>
+<li><strong>Receiver（攻击者的另一部分）</strong>：与 Sender 共享某条互连路径，通过测量自身请求的延迟来 <strong>解码对方发送的比特序列</strong>。</li>
+<li><strong>Victim</strong>：运行敏感任务（如 RSA），其访问模式会与攻击者流量在 NoC 上产生竞争。</li>
+</ul>
+</li>
+<li><strong>攻击渠道：</strong>
+<ul>
+<li>在传统 <strong>round-robin</strong> 仲裁下，当 Sender 持续发送请求时，其会在轮转中频繁抢占带宽，从而造成 Receiver 请求的 <strong>显著排队延迟差异</strong>。</li>
+<li>作者利用该机制构造出一个 <strong>fine-grained timing side channel</strong>，并在真实 GPU 上展示可以泄露 <strong>RSA 密钥 bit 信息</strong>。</li>
+</ul>
+</li>
+<li><strong>Interconnect-gram：</strong>
+<ul>
+<li>作者提出“<strong>interconnect-gram</strong>”作为对互连行为的特征化方式，用于 fingerprint kernel。通过收集延迟分布、仲裁行为等统计特征，可以在 <strong>不直接观察指令级行为</strong> 的情况下，对运行中的 kernel 进行识别。</li>
+</ul>
+</li>
+</ul>
+<h2 id="22-ghost-arbitration-的核心思想"><a class="markdownIt-Anchor" href="#22-ghost-arbitration-的核心思想"></a> 2.2 Ghost Arbitration 的核心思想</h2>
+<p>传统 round-robin 仲裁的安全问题在于：<strong>仲裁内部状态（如当前指针）完全由 real requests 驱动</strong>。攻击者通过控制 real requests 的时序，可以“训练”仲裁器，使得某些节点在之后的时间段总是被优先/延迟，从而显露出受害者动作。</p>
+<p>Ghost arbitration 的核心设计：</p>
+<ul>
+<li><strong>Ghost Request &amp; Ghost Counter：</strong>
+<ul>
+<li>对每个端口维护一个 <strong>ghost counter</strong>，用于记录“幽灵请求”的历史。</li>
+<li>即使某个端口当前没有 real request，仲裁器仍会在内部维护其 “ghost 请求” 轨迹，使仲裁状态<strong>不完全由当前流量模式驱动</strong>。</li>
+</ul>
+</li>
+<li><strong>Least-Recently-Used 风格优先级：</strong>
+<ul>
+<li>仲裁时不仅考虑 real requests，也参考 ghost counter，使得“最近长期未被服务”的端口在未来更容易获得优先级。</li>
+<li>这打破了攻击者利用“长时间发送/停止请求”来操控仲裁状态的能力。</li>
+</ul>
+</li>
+<li><strong>安全直觉：</strong>
+<ul>
+<li>在 ghost arbitration 下，攻击者通过切换 0/1 所能施加的影响会被 <strong>ghost 轨迹平滑化</strong>，Receiver 看到的延迟分布趋于常数，满足 <strong>T₁ ≈ T₀</strong> 的安全条件（文中在 Sec VI 通过 Lemma 形式化讨论这一点）。</li>
+</ul>
+</li>
+</ul>
+<h2 id="23-weighted-ghost-arbitration-的改进"><a class="markdownIt-Anchor" href="#23-weighted-ghost-arbitration-的改进"></a> 2.3 Weighted Ghost Arbitration 的改进</h2>
+<p>作者进一步指出：<strong>简单的 ghost arbitration 在某些不对称通信模式下仍可能泄露信息</strong>。例如，当“0 比特”对应大量连续 idle，可能导致 ghost counter 的累积不对称，从而在发送“1”时出现可观察的延迟差异。</p>
+<p>为此，作者提出 <strong>Weighted Ghost Arbitration</strong>：</p>
+<ul>
+<li><strong>加权更新：</strong>
+<ul>
+<li>对 real/ghost 请求使用 <strong>不同的计数器更新权重</strong>，并根据“连续请求”的长度动态调整更新步长（例如采用移位操作，使连续请求使 ghost counter 以指数方式增加/减少）。</li>
+<li>Sender 的 ghost counter 在长时间 ‘0’ 序列后会迅速衰减，而 Receiver 的 ghost counter 会快速增加，使得 Receiver 在争用时几乎总被优先，从而使 <strong>‘1’ 与 ‘0’ 的观测延迟非常接近</strong>。</li>
+</ul>
+</li>
+<li><strong>实现开销：</strong>
+<ul>
+<li>使用 <strong>8-bit 计数器 + N 输入端口比较器</strong> 的实现，在 7nm PDK 上综合结果显示：
+<ul>
+<li>面积开销约 <strong>2.1%</strong>（相对于 baseline router）。</li>
+<li>功耗开销约 <strong>5.8%</strong>。</li>
+</ul>
+</li>
+<li>这一点说明 weighted ghost 更像是一个 <strong>“可集成的微结构优化”</strong>，而非重型安全模块。</li>
+</ul>
+</li>
+</ul>
+<h2 id="24-与其他仲裁策略的对比"><a class="markdownIt-Anchor" href="#24-与其他仲裁策略的对比"></a> 2.4 与其他仲裁策略的对比</h2>
+<ul>
+<li><strong>Baseline Round-Robin（RR）：</strong> 性能好，但完全不安全，延迟直接反映争用模式。</li>
+<li><strong>Coarse-Grain Round-Robin（CRR）：</strong> 以 warp 级粒度进行轮转，减少一部分高频争用，但依然存在可恢复的信道。</li>
+<li><strong>Strict Round-Robin（SRR，时间划分/TDMA 型）：</strong>
+<ul>
+<li>可以达到接近常数延迟，从安全性上接近理想。</li>
+<li>但由于对带宽进行硬划分，对高带宽工作负载会引入 <strong>高达 ~4× 的性能退化</strong>。</li>
+</ul>
+</li>
+<li><strong>Ghost / Weighted Ghost：</strong>
+<ul>
+<li>在安全性上接近 SRR（延迟分布趋近常数），</li>
+<li>在性能上更接近 baseline RR，为 GPU 正常工作负载保留了大部分带宽利用率。</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h1 id="3-实验与评估evaluation-analysis"><a class="markdownIt-Anchor" href="#3-实验与评估evaluation-analysis"></a> 📉 3. 实验与评估（Evaluation &amp; Analysis）</h1>
+<h2 id="31-实验设置与平台"><a class="markdownIt-Anchor" href="#31-实验设置与平台"></a> 3.1 实验设置与平台</h2>
+<ul>
+<li><strong>模拟平台：</strong>
+<ul>
+<li>基于 <strong>GPGPU-Sim</strong>，配置为 <strong>Volta-like GPU</strong>：
+<ul>
+<li>40 TPC，每个 TPC 含 2 SM；</li>
+<li>每个 SM 具有约 <strong>128KB L1/Shared Memory</strong>；</li>
+<li>L2 分成 <strong>48 个 slice，每 slice 约 96KB</strong>；</li>
+<li>内存子系统采用 <strong>HBM2</strong>，给定具体 tCL、tRCD、tRP 等 DRAM timing 参数。</li>
+</ul>
+</li>
+<li>互连部分基于 <strong>Booksim</strong>，实现层次化 crossbar，并在每个层级使用不同的仲裁方案（baseline RR、CRR、SRR、ghost、weighted ghost）。</li>
+</ul>
+</li>
+<li><strong>工作负载：</strong>
+<ul>
+<li><strong>Synthetic kernels</strong>：用于构造 Sender/Receiver 并精确控制流量模式，评估侧信道容量和比特错误率。</li>
+<li><strong>Real GPU workloads</strong>：来自 Polybench、CUDA-SDK、ISPASS2009、Rodinia 3.0 等基准集，用于评估正常运行场景下的性能损失。</li>
+</ul>
+</li>
+</ul>
+<h2 id="32-对信息泄露的抑制效果"><a class="markdownIt-Anchor" href="#32-对信息泄露的抑制效果"></a> 3.2 对信息泄露的抑制效果</h2>
+<p>作者通过模拟 Sender 与 Receiver 发送比特序列（如 <code>'010101...'</code> 或“不对称的 0/1 序列”），测量 Receiver 观察到的延迟分布。</p>
+<ul>
+<li><strong>RR / CRR：</strong>
+<ul>
+<li>在 RR 下，‘1’ 对应高争用，高延迟；‘0’ 对应低争用，低延迟，<strong>延迟直方图明显双峰，可高精度恢复比特序列</strong>。</li>
+<li>CRR 虽然在 warp 粒度做轮转，少量缓解争用，但 <strong>大部分比特仍可正确解码</strong>。</li>
+</ul>
+</li>
+<li><strong>Ghost Arbitration：</strong>
+<ul>
+<li>对某些简单比特模式（等概率 0/1）可以显著压缩 ‘0’ 与 ‘1’ 的延迟差距，使 Receiver 的观测接近常数延迟。</li>
+<li>但在“偏置较大的比特序列”（例如大量连续 0）下，<strong>ghost counter 的累积仍可能导致残余泄露</strong>。</li>
+</ul>
+</li>
+<li><strong>Weighted Ghost Arbitration：</strong>
+<ul>
+<li>通过加权 ghost counter 更新，使 Sender 尝试通过不对称流量模式操纵仲裁状态时，会被自动“反制”，Receiver 始终获得更高优先级。</li>
+<li>仿真结果表明，Receiver 所观测到的延迟在各种比特模式下都保持高度稳定，<strong>攻击的信道容量被显著压低</strong>，使 RSA 等实际攻击变得难以实施。</li>
+</ul>
+</li>
+</ul>
+<p>用表格形式概括（示意性总结）：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">场景</th>
+<th style="text-align:left">Metric (指标)</th>
+<th style="text-align:left">Baseline 表现</th>
+<th style="text-align:left">Ghost / Weighted Ghost 表现</th>
+<th style="text-align:left">提升幅度 (安全性)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">Covert channel 比特恢复率</td>
+<td style="text-align:left">Bit Recovery Rate</td>
+<td style="text-align:left">接近 100%</td>
+<td style="text-align:left">降至接近随机猜测</td>
+<td style="text-align:left">安全性显著提升 🚀</td>
+</tr>
+<tr>
+<td style="text-align:left">延迟分布差异</td>
+<td style="text-align:left"></td>
+<td style="text-align:left">明显双峰</td>
+<td style="text-align:left">单峰、近似常数延迟</td>
+<td style="text-align:left"><code>T₁ ≈ T₀</code> ⚡</td>
+</tr>
+</tbody>
+</table>
+<p>（具体数值依赖图表，文中定性结论是：weighted ghost 使信息泄露难以有效利用。）</p>
+<h2 id="33-对正常工作负载的性能影响"><a class="markdownIt-Anchor" href="#33-对正常工作负载的性能影响"></a> 3.3 对正常工作负载的性能影响</h2>
+<p>作者重点比较 <strong>SRR vs. weighted ghost vs. baseline RR</strong> 在真实 GPU 工作负载上的性能：</p>
+<ul>
+<li><strong>SRR：</strong>
+<ul>
+<li>由于严格时间切片，使每个物理通道的有效带宽下降，对 <strong>L2 带宽敏感的 workload（如 conv）</strong> 会造成最高约 <strong>4× 的性能退化</strong>。</li>
+<li>对 L2 需求较低的 workload（如 bfs）影响较小。</li>
+</ul>
+</li>
+<li><strong>Weighted Ghost：</strong>
+<ul>
+<li>在保证安全性的同时，对大部分 workload 的性能影响 <strong>远低于 SRR</strong>，整体更接近 baseline RR。</li>
+<li>从 Figure 18 的描述看，性能开销在多数基准上属于 <strong>可接受的中低水平</strong>，是一个更实际的 secure arbitration 方案。</li>
+</ul>
+</li>
+</ul>
+<p>示意总结：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">场景</th>
+<th style="text-align:left">Metric</th>
+<th style="text-align:left">Baseline RR</th>
+<th style="text-align:left">SRR</th>
+<th style="text-align:left">Weighted Ghost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">L2 带宽密集 workload</td>
+<td style="text-align:left">Slowdown vs. Baseline</td>
+<td style="text-align:left">1.0×</td>
+<td style="text-align:left">最坏可达 ~4×</td>
+<td style="text-align:left">接近 1.x×，远优于 SRR</td>
+</tr>
+<tr>
+<td style="text-align:left">L2 轻负载 workload</td>
+<td style="text-align:left">Slowdown vs. Baseline</td>
+<td style="text-align:left">1.0×</td>
+<td style="text-align:left">接近 1×</td>
+<td style="text-align:left">接近 1×</td>
+</tr>
+</tbody>
+</table>
+<h2 id="34-实现开销面积与功耗"><a class="markdownIt-Anchor" href="#34-实现开销面积与功耗"></a> 3.4 实现开销：面积与功耗</h2>
+<ul>
+<li>使用 PyOCN + OpenRoad + 7nm ASAP PDK 综合 <strong>weighted ghost arbiter</strong>，得到：
+<ul>
+<li>面积开销约 <strong>2.1%</strong>（约 <strong>34 μm²</strong>）；</li>
+<li>功耗开销约 <strong>5.8%</strong>（约 <strong>5.76 mW</strong>）。</li>
+</ul>
+</li>
+<li>由于仲裁器本身在 router 中只占很小一部分，这样的 overhead 对整个 NoC 来说更低，说明该机制 <strong>在工业 GPU 设计中具有一定落地潜力</strong>。</li>
+</ul>
+<hr />
+<h1 id="4-批判性思考critical-review"><a class="markdownIt-Anchor" href="#4-批判性思考critical-review"></a> 🔨 4. 批判性思考（Critical Review）</h1>
+<h2 id="41-优点pros"><a class="markdownIt-Anchor" href="#41-优点pros"></a> 4.1 优点（Pros）</h2>
+<ul>
+<li><strong>问题定义清晰且现实：</strong>
+<ul>
+<li>从 GPU NoC 仲裁角度系统分析侧信道，给出 RSA 密钥泄露与 kernel fingerprinting 的 <strong>实际攻击案例</strong>，相比纯理论分析更具说服力。</li>
+</ul>
+</li>
+<li><strong>机制设计兼顾安全与性能：</strong>
+<ul>
+<li>Ghost / weighted ghost 通过非常局部的微结构修改，在安全性上逼近 SRR，却保留了大部分性能，是一个 <strong>工程上可接受的折中点</strong>。</li>
+</ul>
+</li>
+<li><strong>评估维度全面：</strong>
+<ul>
+<li>同时覆盖 <strong>攻击能力（信道容量）、正常性能（多基准集）、实现成本（面积/功耗）</strong>，整体实验设计接近架构顶会的规范。</li>
+</ul>
+</li>
+<li><strong>形式化直觉与安全讨论：</strong>
+<ul>
+<li>在 Sec VI 中用 Lemma 等方式给出安全直觉（如 <code>T₁ ≈ T₀</code> 的条件、发送端需要更多请求才能形成可靠争用等），让读者对机制的安全性有可推理的基础。</li>
+</ul>
+</li>
+</ul>
+<h2 id="42-局限性与质疑cons-weaknesses"><a class="markdownIt-Anchor" href="#42-局限性与质疑cons-weaknesses"></a> 4.2 局限性与质疑（Cons &amp; Weaknesses）</h2>
+<ul>
+<li><strong>威胁模型可能略保守：</strong>
+<ul>
+<li>论文主要考虑 Sender/Receiver 在 NoC 上具有较为固定的路径关系（如 TPC-channel、GPC-channel），而现实云环境中的隔离机制（MIG、MPS、SR-IOV 等）可能会改变流量路径或调度行为。<strong>在更复杂的多租户场景中，ghost 仲裁的安全性是否仍然稳健</strong>，论文没有充分展开。</li>
+</ul>
+</li>
+<li><strong>对“高级攻击者”的讨论不够深入：</strong>
+<ul>
+<li>作者假设攻击者的主要能力是调制连续请求并测量延迟，但在实际中，攻击者可以结合 <strong>cache/TLB/SM 调度等多个侧信道</strong>。如果攻击者将 ghost arbitration 看作已知黑盒，再叠加其他信道，整体安全性如何，并未给出系统性分析。</li>
+</ul>
+</li>
+<li><strong>对应用开发者/系统软件的指导有限：</strong>
+<ul>
+<li>论文主要从硬件仲裁角度给出解决方案，对 <strong>runtime / driver / OS 侧的缓解思路（如调度隔离、流量 shaping）</strong> 提及较少，容易给人一种“只能靠硬件改动”的印象。</li>
+</ul>
+</li>
+<li><strong>形式化安全性仍偏直觉：</strong>
+<ul>
+<li>虽然给出了 Lemma/讨论，但尚未看到类似 “non-interference” 或 “information-theoretic capacity bound” 的严格证明，只是通过实验展示信道难以利用。对于追求强安全保证的场景（如机密计算），这可能不够。</li>
+</ul>
+</li>
+</ul>
+<h2 id="43-启发与未来工作impact-future-directions"><a class="markdownIt-Anchor" href="#43-启发与未来工作impact-future-directions"></a> 4.3 启发与未来工作（Impact &amp; Future Directions）</h2>
+<ul>
+<li><strong>与缓存/调度级防护的协同：</strong>
+<ul>
+<li>可以将 ghost arbitration 与 <strong>cache partitioning、bank privatization、SM-level isolation</strong> 结合，形成跨层的 side-channel defense stack。</li>
+</ul>
+</li>
+<li><strong>自适应/可配置的 secure arbitration：</strong>
+<ul>
+<li>当前 weighted ghost 使用固定策略，未来可以考虑根据 workload 运行时特征自动调整权重，使在“安全敏感模式”与“性能优先模式”之间 <strong>动态切换</strong>。</li>
+</ul>
+</li>
+<li><strong>形式化安全分析与工具链：</strong>
+<ul>
+<li>为 ghost arbitration 设计一个类似“timing side-channel verification”的形式化框架，给出容量上限或 non-interference 证明，会进一步增强该方案的说服力。</li>
+</ul>
+</li>
+<li><strong>扩展到多芯片 GPU / Chiplet 互连：</strong>
+<ul>
+<li>未来 GPU 趋向多芯片封装，NoC 将跨 die / package，ghost arbitration 的思想能否扩展到更复杂的 <strong>NoP（Network-on-Package）/NoI（Network-on-Interposer）</strong> 是一个有趣方向。</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h1 id="5-对作者的深度追问questions-for-the-authors"><a class="markdownIt-Anchor" href="#5-对作者的深度追问questions-for-the-authors"></a> 🧠 5. 对作者的深度追问（Questions for the Authors）</h1>
+<ol>
+<li>
+<p><strong>在真实云环境中的鲁棒性：</strong><br />
+你们的攻击与防御分析主要基于 GPGPU-Sim 和单 GPU 设置，如果在多租户云环境（如 MIG + MPS 共存）下，考虑 driver 调度、虚拟化层的额外扰动，你们认为 weighted ghost arbitration 仍能保证 <code>T₁ ≈ T₀</code> 吗？有没有初步的仿真或经验支持？</p>
+</li>
+<li>
+<p><strong>多信道联合攻击的影响：</strong><br />
+如果攻击者同时利用 cache miss latency、TLB 行为以及 NoC 延迟，构造多模态侧信道，你们认为 ghost arbitration 能否显著降低整体信息容量？换句话说，<strong>NoC 安全仲裁在多信道攻击模型下的边际贡献</strong> 有多大？</p>
+</li>
+<li>
+<p><strong>硬件实现细节与时序收敛：</strong><br />
+在 7nm PDK 上综合的 ghost/weighted ghost arbiter，是否对 router 的临界路径产生了显著影响？在高频 GPU 设计中，如果仲裁器已经处于 timing-critical 路径，额外的 ghost counter 比较逻辑是否需要 pipeline 化？这会不会反过来影响 NoC latency？</p>
+</li>
+</ol>
+<hr />
+
+</article>
+    
+    
+
+</div>
+<div class="trm-post-next-prev row">
+    <div class="col-lg-12">
+        <!-- title -->
+        <h5 class="trm-title-with-divider">
+            Other Articles
+            <span data-number="02"></span>
+        </h5>
+    </div>
+    
+        <div class="col-lg-6">
+    <div class="trm-blog-card trm-scroll-animation">
+        <a href="/2026/02/20/Generalizing_Ray_Tracing_Accelerators_for_Tree_Traversals_on_GPUs/" class="trm-cover-frame trm-anima-link">
+            
+            
+                <div class="trm-cover-img" data-random-img></div>
+            
+        </a>
+        
+        <div class="trm-card-descr">
+            <div class="trm-label trm-category trm-mb-20">
+                <a href=" /categories/Architecture/">
+                    Architecture
+                </a>
+            </div>
+            <h5>
+                <a href="/2026/02/20/Generalizing_Ray_Tracing_Accelerators_for_Tree_Traversals_on_GPUs/" class="trm-anima-link">
+                    Generalizing Ray Tracing Accelerators for Tree Traversals on GPUs
+                </a>
+            </h5>
+            <div class="trm-divider trm-mb-20 trm-mt-20"></div>
+            <ul class="trm-card-data trm-label">
+                <li>26/02/20</li>
+                <li>11:04</li>
+                
+                
+            </ul>
+        </div>
+    </div>
+</div>
+    
+    
+        <div class="col-lg-6">
+    <div class="trm-blog-card trm-scroll-animation">
+        <a href="/2026/02/20/KV-Latent_Dimensional-level_KV_Cache_Reduction_with_Frequency-aware_Rotary_Positional_Embedding/" class="trm-cover-frame trm-anima-link">
+            
+            
+                <div class="trm-cover-img" data-random-img></div>
+            
+        </a>
+        
+        <div class="trm-card-descr">
+            <div class="trm-label trm-category trm-mb-20">
+                <a href=" /categories/Algorithm/">
+                    Algorithm
+                </a>
+            </div>
+            <h5>
+                <a href="/2026/02/20/KV-Latent_Dimensional-level_KV_Cache_Reduction_with_Frequency-aware_Rotary_Positional_Embedding/" class="trm-anima-link">
+                    KV-Latent_ Dimensional-level KV Cache Reduction with Frequency-aware Rotary Positional Embedding
+                </a>
+            </h5>
+            <div class="trm-divider trm-mb-20 trm-mt-20"></div>
+            <ul class="trm-card-data trm-label">
+                <li>26/02/20</li>
+                <li>11:04</li>
+                
+                
+            </ul>
+        </div>
+    </div>
+</div>
+    
+</div>
+
+    
+
+    <div id="giscus-wrap" class="trm-card trm-scroll-animation comment-container"></div>
+<script data-swup-reload-script>
+    function loadGiscus() {
+        let nowTheme = document.documentElement.classList.contains('dark') ? 'transparent_dark' : 'light'
+        const config = {
+            src: 'https://giscus.app/client.js',
+            "data-repo": 'Senbon-Sakura/Senbon-Sakura.github.io',
+            "data-repo-id": 'R_kgDORJTdfQ',
+            "data-category": 'Announcements',
+            "data-category-id": 'DIC_kwDORJTdfc4C3e5A',
+            "data-mapping": 'pathname',
+            "data-reactions-enabled": '1',
+            "data-emit-metadata": '0',
+            "data-theme": nowTheme,
+            "data-lang": 'zh-CN',
+            crossorigin: "anonymous",
+            async: true
+        }
+        let ele = document.createElement('script')
+        for (let key in config) {
+            ele.setAttribute(key, config[key])
+        }
+        document.getElementById('giscus-wrap').insertAdjacentElement('afterbegin', ele)
+    }
+
+    function changeGiscusTheme() {
+        let theme = document.documentElement.classList.contains('dark') ? 'transparent_dark' : 'light'
+
+        function sendMessage(message) {
+            const iframe = document.querySelector('iframe.giscus-frame');
+            if (!iframe) return;
+            iframe.contentWindow.postMessage({ giscus: message }, 'https://giscus.app');
+        }
+
+        sendMessage({
+            setConfig: {
+                theme: theme
+            }
+        });
+    }
+
+    loadGiscus();
+</script>
+
+
+
+                    <div class="trm-divider footer-divider"></div>
+
+                    <!-- footer -->
+                    <footer class="trm-footer-card trm-scroll-animation">
+
+    
+
+    
+
+      
+
+    
+        <div class="trm-footer-item blog-run-long"></div>
+     
+
+     
+</footer>
+                    <!-- footer end -->
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+            <!-- body end -->
+
+            
+
+    <div id="post-toc" class="trm-post-toc">
+      <div class="trm-post-toc-header">
+        Article table of contents
+				<span id="post-toc-top">
+					TOP
+				</span>
+      </div>
+      <div class="trm-post-toc-content">
+        <ol class="trm-toc"><li class="trm-toc-item trm-toc-level-1" title=" 🚀 0. 高层概览（High-level Overview）"><a rel="nofollow" class="trm-toc-link" href="#0-高层概览high-level-overview"><span class="trm-toc-number">1.</span> <span class="trm-toc-text"> 🚀 0. 高层概览（High-level Overview）</span></a></li><li class="trm-toc-item trm-toc-level-1" title=" 🧭 1. 问题与定位（Problem &amp; Positioning）"><a rel="nofollow" class="trm-toc-link" href="#1-问题与定位problem-positioning"><span class="trm-toc-number">2.</span> <span class="trm-toc-text"> 🧭 1. 问题与定位（Problem &amp; Positioning）</span></a><ol class="trm-toc-child"><li class="trm-toc-item trm-toc-level-2" title=" 1.1 论文要解决的本质问题"><a rel="nofollow" class="trm-toc-link" href="#11-论文要解决的本质问题"><span class="trm-toc-number">2.1.</span> <span class="trm-toc-text"> 1.1 论文要解决的本质问题</span></a></li><li class="trm-toc-item trm-toc-level-2" title=" 1.2 在研究版图中的位置"><a rel="nofollow" class="trm-toc-link" href="#12-在研究版图中的位置"><span class="trm-toc-number">2.2.</span> <span class="trm-toc-text"> 1.2 在研究版图中的位置</span></a></li></ol></li><li class="trm-toc-item trm-toc-level-1" title=" 💡 2. 核心思想与技术贡献（Core Ideas &amp; Contributions）"><a rel="nofollow" class="trm-toc-link" href="#2-核心思想与技术贡献core-ideas-contributions"><span class="trm-toc-number">3.</span> <span class="trm-toc-text"> 💡 2. 核心思想与技术贡献（Core Ideas &amp; Contributions）</span></a><ol class="trm-toc-child"><li class="trm-toc-item trm-toc-level-2" title=" 2.1 威胁模型与攻击构造"><a rel="nofollow" class="trm-toc-link" href="#21-威胁模型与攻击构造"><span class="trm-toc-number">3.1.</span> <span class="trm-toc-text"> 2.1 威胁模型与攻击构造</span></a></li><li class="trm-toc-item trm-toc-level-2" title=" 2.2 Ghost Arbitration 的核心思想"><a rel="nofollow" class="trm-toc-link" href="#22-ghost-arbitration-的核心思想"><span class="trm-toc-number">3.2.</span> <span class="trm-toc-text"> 2.2 Ghost Arbitration 的核心思想</span></a></li><li class="trm-toc-item trm-toc-level-2" title=" 2.3 Weighted Ghost Arbitration 的改进"><a rel="nofollow" class="trm-toc-link" href="#23-weighted-ghost-arbitration-的改进"><span class="trm-toc-number">3.3.</span> <span class="trm-toc-text"> 2.3 Weighted Ghost Arbitration 的改进</span></a></li><li class="trm-toc-item trm-toc-level-2" title=" 2.4 与其他仲裁策略的对比"><a rel="nofollow" class="trm-toc-link" href="#24-与其他仲裁策略的对比"><span class="trm-toc-number">3.4.</span> <span class="trm-toc-text"> 2.4 与其他仲裁策略的对比</span></a></li></ol></li><li class="trm-toc-item trm-toc-level-1" title=" 📉 3. 实验与评估（Evaluation &amp; Analysis）"><a rel="nofollow" class="trm-toc-link" href="#3-实验与评估evaluation-analysis"><span class="trm-toc-number">4.</span> <span class="trm-toc-text"> 📉 3. 实验与评估（Evaluation &amp; Analysis）</span></a><ol class="trm-toc-child"><li class="trm-toc-item trm-toc-level-2" title=" 3.1 实验设置与平台"><a rel="nofollow" class="trm-toc-link" href="#31-实验设置与平台"><span class="trm-toc-number">4.1.</span> <span class="trm-toc-text"> 3.1 实验设置与平台</span></a></li><li class="trm-toc-item trm-toc-level-2" title=" 3.2 对信息泄露的抑制效果"><a rel="nofollow" class="trm-toc-link" href="#32-对信息泄露的抑制效果"><span class="trm-toc-number">4.2.</span> <span class="trm-toc-text"> 3.2 对信息泄露的抑制效果</span></a></li><li class="trm-toc-item trm-toc-level-2" title=" 3.3 对正常工作负载的性能影响"><a rel="nofollow" class="trm-toc-link" href="#33-对正常工作负载的性能影响"><span class="trm-toc-number">4.3.</span> <span class="trm-toc-text"> 3.3 对正常工作负载的性能影响</span></a></li><li class="trm-toc-item trm-toc-level-2" title=" 3.4 实现开销：面积与功耗"><a rel="nofollow" class="trm-toc-link" href="#34-实现开销面积与功耗"><span class="trm-toc-number">4.4.</span> <span class="trm-toc-text"> 3.4 实现开销：面积与功耗</span></a></li></ol></li><li class="trm-toc-item trm-toc-level-1" title=" 🔨 4. 批判性思考（Critical Review）"><a rel="nofollow" class="trm-toc-link" href="#4-批判性思考critical-review"><span class="trm-toc-number">5.</span> <span class="trm-toc-text"> 🔨 4. 批判性思考（Critical Review）</span></a><ol class="trm-toc-child"><li class="trm-toc-item trm-toc-level-2" title=" 4.1 优点（Pros）"><a rel="nofollow" class="trm-toc-link" href="#41-优点pros"><span class="trm-toc-number">5.1.</span> <span class="trm-toc-text"> 4.1 优点（Pros）</span></a></li><li class="trm-toc-item trm-toc-level-2" title=" 4.2 局限性与质疑（Cons &amp; Weaknesses）"><a rel="nofollow" class="trm-toc-link" href="#42-局限性与质疑cons-weaknesses"><span class="trm-toc-number">5.2.</span> <span class="trm-toc-text"> 4.2 局限性与质疑（Cons &amp; Weaknesses）</span></a></li><li class="trm-toc-item trm-toc-level-2" title=" 4.3 启发与未来工作（Impact &amp; Future Directions）"><a rel="nofollow" class="trm-toc-link" href="#43-启发与未来工作impact-future-directions"><span class="trm-toc-number">5.3.</span> <span class="trm-toc-text"> 4.3 启发与未来工作（Impact &amp; Future Directions）</span></a></li></ol></li><li class="trm-toc-item trm-toc-level-1" title=" 🧠 5. 对作者的深度追问（Questions for the Authors）"><a rel="nofollow" class="trm-toc-link" href="#5-对作者的深度追问questions-for-the-authors"><span class="trm-toc-number">6.</span> <span class="trm-toc-text"> 🧠 5. 对作者的深度追问（Questions for the Authors）</span></a></li></ol>
+      </div>
+    </div>
+
+            
+<div class="trm-fixed-container">
+    
+        <div class="trm-fixed-btn post-toc-btn" data-title="Open toc">
+            <i class="iconfont fas fa-th-list"></i>
+        </div>
+    
+    
+        <div class="trm-fixed-btn" data-title="Read Mode" onclick="asyncFun.switchReadMode()">
+            <i class="iconfont fas fa-book-reader"></i>
+        </div>
+    
+    
+        <div class="trm-fixed-btn hidden-md" data-title="Toggle between single-column and double-column" onclick="asyncFun.switchSingleColumn()">
+            <i class="iconfont fas fa-arrows-alt-h"></i>
+        </div>
+    
+    <div id="trm-back-top" class="trm-fixed-btn" data-title="Back To Top">
+        <i class="iconfont fas fa-arrow-up"></i>
+    </div>
+</div>
+
+        </div>
+      </div>
+      <!-- scroll container end -->
+  </div>
+  <!-- app wrapper end -->
+
+  
+    <div class="trm-search-popup">
+        <div class="trm-search-wrapper">
+            <div class="form trm-search-form">
+                <div class="trm-search-input-icon">
+                    <i class="iconfont fas fa-search"></i>
+                </div>
+                <input class="trm-search-input" type="text" placeholder="Searching...">
+                <div class="trm-search-btn-close">
+                    <i class="iconfont fas fa-times"></i>
+                </div>
+            </div>
+            <div class="trm-search-result-container">
+                <div class="trm-search-empty">
+                    Please enter keywords to search
+                </div>
+            </div>
+            <div class="trm-search-footer">
+                <div class="trm-search-stats"></div>
+                <ul class="trm-search-commands">
+                    <li>
+                        <kbd class="command-palette-commands-key">
+                            <svg width="15" height="15" aria-label="Escape key" role="img">
+                                <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"
+                                    stroke-width="1.2">
+                                    <path
+                                        d="M13.6167 8.936c-.1065.3583-.6883.962-1.4875.962-.7993 0-1.653-.9165-1.653-2.1258v-.5678c0-1.2548.7896-2.1016 1.653-2.1016.8634 0 1.3601.4778 1.4875 1.0724M9 6c-.1352-.4735-.7506-.9219-1.46-.8972-.7092.0246-1.344.57-1.344 1.2166s.4198.8812 1.3445.9805C8.465 7.3992 8.968 7.9337 9 8.5c.032.5663-.454 1.398-1.4595 1.398C6.6593 9.898 6 9 5.963 8.4851m-1.4748.5368c-.2635.5941-.8099.876-1.5443.876s-1.7073-.6248-1.7073-2.204v-.4603c0-1.0416.721-2.131 1.7073-2.131.9864 0 1.6425 1.031 1.5443 2.2492h-2.956">
+                                    </path>
+                                </g>
+                            </svg>
+                        </kbd>
+                        <span class="command-palette-Label">to close</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+  <!-- Plugin -->
+
+
+
+
+    
+    
+<script src="https://unpkg.com/@fancyapps/ui@4.0/dist/fancybox.umd.js"></script>
+
+    
+
+    
+        <script src="/js/plugins/typing.js?v=2.2.7"></script>
+    
+
+    
+        
+<script src="https://unpkg.com/hexo-generator-searchdb@1.4.0/dist/search.js"></script>
+
+        <script src="/js/plugins/local_search.js?v=2.2.7"></script>
+    
+
+    <!-- 数学公式 -->
+    
+        
+<script src="https://unpkg.com/katex@latest/dist/katex.min.js" data-swup-reload-script></script>
+
+        
+            
+<script src="https://unpkg.com/katex@latest/dist/contrib/copy-tex.min.js" data-swup-reload-script></script>
+
+        
+        
+<script src="https://unpkg.com/katex@latest/dist/contrib/auto-render.min.js" data-swup-reload-script></script>
+
+        <script data-swup-reload-script>
+              window.renderMathInElement(document.body, {
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true },
+                ],
+                ...{},
+            })
+        </script>
+    
+
+    <!-- 评论插件 -->
+    
+        
+
+        
+    
+
+		
+
+
+
+
+    <!-- Service Worker -->
+    
+    <!-- baidu push -->
+    
+
+
+<script id="async-script" src="/js/main.js?v=2.2.7"></script>
+
+<!-- CDN -->
+
+
+    
+
+    
+
+    
+
+
+
+</body>
+
+</html>

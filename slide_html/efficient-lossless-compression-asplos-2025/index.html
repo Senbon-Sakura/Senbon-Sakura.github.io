@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> efficient-lossless-compression-asplos-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="efficient-fp-compression" class="text-2xl mt-2 font-sans">Efficient FP Compression</h1>
+<h2 id="cpugpu" class="text-xl mt-2 pb-2 font-sans">面向 CPU/GPU 的科学浮点数据高效无损压缩</h2>
+<p class="font-serif my-1"><strong>Paper</strong>: Efficient Lossless Compression of Scientific Floating-Point Data on CPUs and GPUs</p>
+<p class="font-serif my-1">Noushin Azami, Alex Fallin, Martin Burtscher<br/>
+Texas State University<br/>
+ASPLOS 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-04-27</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">三句话看懂</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: scientific data compression 不是只拼 <code>ratio</code> 或只拼 <code>throughput</code>；真实系统要同时满足 <strong>高吞吐 + 高压缩率 + CPU/GPU bitstream 兼容</strong>。</li>
+<li class="ml-8"><strong>方法</strong>: 作者把 IEEE 754 bit-pattern 当整数处理，围绕 <code>DIFFMS / BIT / RZE / FCM / RAZE / RARE</code> 设计四条面向 <code>FP32/FP64</code>、<code>speed/ratio</code> 的并行变换链。</li>
+<li class="ml-8"><strong>结果</strong>: 在 <code>RTX 4090</code> 上，<code>SPspeed</code> 达到 <strong><code>518 GB/s</code></strong> 几何平均压缩吞吐；<code>DPratio</code> 在 <code>FP64</code> 上给出最强 GPU 侧压缩率，同时四个方案几乎都在 Pareto front 上。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">背景：问题到底难在哪</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">科学模拟、光源、粒子实验的数据规模持续增大，瓶颈不再只是算力，而是 <strong>storage / transfer / I/O bandwidth</strong>。</li>
+<li class="ml-8">这类场景很多时候必须 <strong>lossless</strong>；误差注入会直接影响物理结论、工程设计或后续分析可信度。</li>
+<li class="ml-8">真正麻烦的是 heterogeneous workflow：数据可能在 <strong>GPU 上生成并压缩</strong>，却要在 <strong>CPU 上解压分析</strong>。</li>
+<li class="ml-8">所以 paper 优化目标不是单指标冠军，而是 <strong>cross-device usable compression</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">瓶颈：现有方案各强一边</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">高压缩率方案通常依赖更复杂的 predictor / entropy coding，<strong>ratio 高但速度慢</strong>。</li>
+<li class="ml-8">高吞吐方案往往更像快速 reformatting，<strong>速度高但压缩率不够</strong>。</li>
+<li class="ml-8">大多数实现还只支持单设备，导致“GPU 上压、CPU 上解”根本不可用。</li>
+<li class="ml-8">论文的核心判断是：<strong>如果 compressor 本身成为新 bottleneck，它就没有系统价值。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Observation 1</strong>: scientific floating-point data 往往较平滑，相邻值 exponent 接近，做整数差分后容易得到 <strong>小幅度残差</strong>。</li>
+<li class="ml-8"><strong>Observation 2</strong>: 这些残差经格式变换后，会出现大量 <strong>leading zeros</strong>、重复高位模式、短距离重复值。</li>
+<li class="ml-8"><strong>Observation 3</strong>: <code>FP32</code> 与 <code>FP64</code> 的最佳 ratio 路线不同；<code>FP64</code> mantissa 更随机，不能简单把 <code>FP32</code> 方案放大。</li>
+<li class="ml-8"><strong>核心洞察</strong>: 与其上来就做复杂 coder，不如先把冗余重排成 <strong>GPU-friendly primitives</strong> 能吃掉的形态。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">总体方案</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/Azami_-_2025_-_Efficient_Lossless_Compression_of_Scientific_Floating-Point_Data_on_CPUs_and_GPUs_images/_page_2_Figure_16.jpeg" width="820" style="max-width: 92%; max-height: 430px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">四条链分别服务 <code>FP32/FP64</code> 与 <code>speed/ratio</code> 两种目标，而不是追求一个万能 pipeline。</li>
+<li class="ml-8">除 <code>FCM</code> 外，所有 stage 都按 <strong><code>16 KB chunk</code></strong> 独立处理，因此天然适合 <code>OpenMP</code> 与 <code>CUDA block</code> 并行。</li>
+<li class="ml-8">这张图最重要的信息是：<strong>speed 模式只保留两级快变换，ratio 模式再逐层榨干冗余。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1diffms-mplg" class="text-2xl mt-2 font-sans">机制 1：DIFFMS + MPLG</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/Azami_-_2025_-_Efficient_Lossless_Compression_of_Scientific_Floating-Point_Data_on_CPUs_and_GPUs_images/_page_4_Figure_2.jpeg" width="760" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>DIFFMS</code> 先做整数差分，再把 two's-complement 变成 magnitude-sign，把正负残差都尽量拉成 <strong>leading-zero-rich</strong> 表示。</li>
+<li class="ml-8">公式很简单但很关键：<code>(data &lt;&lt; 1) xor (data &gt;&gt; (w-1))</code>，完全由整数操作构成，易于 CPU/GPU 高吞吐实现。</li>
+<li class="ml-8"><code>MPLG</code> 再按 chunk / subchunk 消掉公共 leading zeros，所以 <code>SPspeed/DPspeed</code> 的思路本质上是 <strong>极简但极快</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2bit-rze" class="text-2xl mt-2 font-sans">机制 2：BIT + RZE</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/Azami_-_2025_-_Efficient_Lossless_Compression_of_Scientific_Floating-Point_Data_on_CPUs_and_GPUs_images/_page_5_Figure_4.jpeg" width="780" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>BIT</code> 把每个值的同一 bit 位收拢到一起，使高位零在输出前段形成长零串。</li>
+<li class="ml-8"><code>RZE</code> 再按 <strong>字节</strong> 建 bitmap，删除零字节，只输出非零字节与压缩后的 bitmap。</li>
+<li class="ml-8">真正巧妙的是 bitmap 会被继续递归压缩，从 <strong><code>16384 -&gt; 2048 -&gt; 256 -&gt; 32 bits</code></strong>，因此 <code>SPratio</code> 的 ratio 明显高于 speed 路线。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="3fcm-razerare" class="text-2xl mt-2 font-sans">机制 3：FCM + RAZE/RARE</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/Azami_-_2025_-_Efficient_Lossless_Compression_of_Scientific_Floating-Point_Data_on_CPUs_and_GPUs_images/_page_6_Figure_7.jpeg" width="780" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>DPratio</code> 不能直接照搬 <code>SPratio</code>，因为 <code>FP64</code> 的低位随机性更强，bit shuffle 的收益被噪声吃掉。</li>
+<li class="ml-8">作者用 <code>FCM</code> 先把“重复值定位”改写成 <strong><code>hash + index</code> 排序问题</strong>，避免传统 <code>FPC</code> 的 per-thread hash table 无法上 GPU。</li>
+<li class="ml-8"><code>RAZE/RARE</code> 则自适应选择 top-<code>k</code> bits，只压高位、保留低位原样，承认低位随机性而不是硬压。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="chunk" class="text-2xl mt-2 font-sans">一个 chunk 怎么走</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Step 1</strong>: 输入按 bit-pattern 读成 <code>32/64-bit</code> 整数；除 <code>FCM</code> 外，后续都在 <strong><code>16 KB chunk</code></strong> 内独立运行。</li>
+<li class="ml-8"><strong>Step 2</strong>: <code>speed</code> 路线走 <code>DIFFMS -&gt; MPLG</code>，目标是最短数据路径和最高并行吞吐。</li>
+<li class="ml-8"><strong>Step 3</strong>: <code>ratio</code> 路线继续追加 <code>BIT/RZE</code> 或 <code>FCM/RAZE/RARE</code>，用更多中间处理换更高压缩率。</li>
+<li class="ml-8"><strong>Step 4</strong>: 反向解压按相反顺序执行；同一 bitstream 可在 <strong>CPU 与 GPU 双端兼容解码</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">工程账单</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>无专用硬件账单</strong>: 这是纯软件 compressor，但成本转成了 <code>sort / prefix sum / shared memory / output packing</code>。</li>
+<li class="ml-8"><strong><code>DPratio</code> 最贵</strong>: <code>FCM</code> 会生成两个中间数组，使临时数据约为 <strong><code>2x input</code></strong>，而且编码路径被排序主导。</li>
+<li class="ml-8"><strong>兼容性有代价</strong>: 作者坚持输出 <strong>contiguous block</strong>，所以吞吐数字比只吐分散 chunks 的 <code>nvCOMP</code> 更保守。</li>
+<li class="ml-8"><strong>实现风险</strong>: 若想吃满性能，chunk 调度、warp shuffle 和 shared-memory 布局都不能粗糙。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>对比对象</strong>: 共 <strong><code>19</code></strong> 个 compressor，覆盖 <code>11 GPU</code> + <code>9 CPU</code> 实现；其中 <code>Ndzip</code> 是少数也支持 CPU/GPU 兼容的直接对手。</li>
+<li class="ml-8"><strong>数据集</strong>: <code>90</code> 个 <code>FP32</code> 文件 + <code>20</code> 个 <code>FP64</code> 文件，来自 <code>SDRBench</code> 和额外 scientific inputs。</li>
+<li class="ml-8"><strong>平台</strong>: <code>Ryzen Threadripper 2950X</code>、<code>dual Xeon Gold 6226R</code>、<code>RTX 4090</code>、<code>A100</code>。</li>
+<li class="ml-8"><strong>指标</strong>: 压缩率、压缩吞吐、解压吞吐；结果主要用 <strong>Pareto front</strong> 表达，而不是只报一个平均值。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="fp32-gpu" class="text-2xl mt-2 font-sans">FP32 结果：GPU 上平衡最好</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/Azami_-_2025_-_Efficient_Lossless_Compression_of_Scientific_Floating-Point_Data_on_CPUs_and_GPUs_images/_page_8_Figure_3.jpeg" width="780" style="max-width: 92%; max-height: 350px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">横轴是 <strong>throughput</strong>，纵轴是 <strong>ratio</strong>；越右上越好，图中还标了 Pareto front。</li>
+<li class="ml-8">在 <code>RTX 4090</code> 上，<code>SPspeed</code> 的几何平均达到 <strong><code>518 GB/s</code></strong>，ratio 为 <strong><code>1.41</code></strong>。</li>
+<li class="ml-8">Pareto front 上同时出现 <code>SPratio</code>、<code>SPspeed</code> 和 <code>Bitcomp-i0</code>；其中 <strong><code>SPratio</code> 压得最好，<code>SPspeed</code> 跑得最快</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="fp64-dpratio-ratio" class="text-2xl mt-2 font-sans">FP64 结果：DPratio 拉开 ratio</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/Azami_-_2025_-_Efficient_Lossless_Compression_of_Scientific_Floating-Point_Data_on_CPUs_and_GPUs_images/_page_10_Figure_2.jpeg" width="780" style="max-width: 92%; max-height: 330px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">这页仍是 <strong>ratio vs. throughput</strong>，只是对象换成 <code>FP64</code> workload。</li>
+<li class="ml-8"><code>DPratio</code> 的核心卖点不是速度，而是 <strong>明显更高的 GPU 侧压缩率</strong>；<code>Bitcomp</code> 的 ratio 只有 <strong><code>1.04</code></strong>。</li>
+<li class="ml-8">这证明 <code>FCM + adaptive top-bit elimination</code> 的确抓住了 <code>FP64</code> 的结构特征，只是代价是编码更慢。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="cpu" class="text-2xl mt-2 font-sans">CPU 结果与兼容性</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>SPspeed</code> 在 <code>Ryzen</code> 上比 <code>FPzip</code> <strong>压缩快 <code>75x</code>、解压快 <code>55x</code></strong>，说明这不是“只会在 GPU 上好看”的方案。</li>
+<li class="ml-8"><code>DPspeed</code> 对比 <code>pFPC</code> 也约有 <strong><code>10x</code></strong> 吞吐优势，而且压缩率相近。</li>
+<li class="ml-8">更关键的是：<strong>只有本文四个方案和 <code>Ndzip</code> 真正提供 CPU/GPU 兼容 bitstream</strong>；这在真实 pipeline 中比单次 benchmark 冠军更重要。</li>
+<li class="ml-8">论文还专门指出，若把 <code>nvCOMP</code> 不做 contiguous concatenation 的优势扣掉，本文方案的系统意义会更强。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么有些场景更强</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>SPspeed</code> 的 sweet spot 是 <strong>需要实时写入 / 高频解压</strong> 的场景，因为两级变换足够轻。</li>
+<li class="ml-8"><code>SPratio</code> 更适合 <strong>带宽仍紧张但能容忍额外编码开销</strong> 的 <code>FP32</code> 数据归档。</li>
+<li class="ml-8"><code>DPratio</code> 强在 <code>FP64</code> 压缩率，但它显然不适合最敏感的在线编码延迟路径。</li>
+<li class="ml-8">论文也明确承认：若数据 <strong>不平滑、低位高度随机</strong>，这些方法不会特别占优。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">这篇工作给出的不是一个 compressor，而是一套 <strong>面向 heterogeneous scientific workflow 的设计空间分解</strong>。</li>
+<li class="ml-8">最重要的技术判断是：先把冗余转成 <strong>leading zeros / repeated high bits / short-distance matches</strong>，再交给 GPU-friendly primitive 处理。</li>
+<li class="ml-8">从系统角度看，最有价值的结果不是某个单点冠军，而是 <strong>四个方案几乎始终站在 Pareto front 上</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>优点</strong>: 问题定义非常准，真正把 <code>ratio + throughput + compatibility</code> 当成同等重要目标。</li>
+<li class="ml-8"><strong>最强点</strong>: <code>DPratio</code> 没有硬套 <code>FP32</code> 思路，而是正面承认 <code>FP64</code> 随机性并重写变换链。</li>
+<li class="ml-8"><strong>局限</strong>: 对 smooth data 依赖强，且 <code>DPratio</code> 的排序与 <code>2x</code> 中间表示让工程成本不低。</li>
+<li class="ml-8"><strong>后续</strong>: 最自然的下一步是 <strong>per-chunk adaptive pipeline selection</strong>，按数据特征动态切 <code>speed</code> / <code>ratio</code> 路线。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

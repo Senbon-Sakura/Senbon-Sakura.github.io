@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> itp-xptp-asplos-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="itpxptp" class="text-2xl mt-2 font-sans">iTP+xPTP</h1>
+<h2 id="tlbcache" class="text-xl mt-2 pb-2 font-sans">面向大代码服务器负载的指令感知 TLB/Cache 协同替换</h2>
+<p class="font-serif my-1">Dimitrios Chasapis, Georgios Vavouliotis, Daniel A. Jiménez, Marc Casas<br/>
+Barcelona Supercomputing Center, Texas A&amp;M University, Universitat Politècnica de Catalunya<br/>
+ASPLOS 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-03-29</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: server workload 的 <strong>large instruction footprint</strong> 让 instruction STLB miss 变成前端关键路径上的 stall。</li>
+<li class="ml-8"><strong>方法</strong>: <code>iTP</code> 在 shared STLB 中优先保留 instruction translation, <code>xPTP</code> 在 L2C 中优先保留 data-PTE block 来补偿额外 page walk。</li>
+<li class="ml-8"><strong>结果</strong>: 相比 <code>LRU</code>, <strong>单线程 <code>+18.9%</code></strong>, <strong>SMT <code>+11.4%</code></strong>; 代价仅是 <strong>STLB 每项 4 bit</strong>, <strong>L2C/L2C MSHR 每项 1 bit</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">翻译路径背景</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">现代 x86 路径是: <code>ITLB/DTLB -&gt; shared STLB -&gt; page walk -&gt; L2C/LLC/DRAM</code>。</li>
+<li class="ml-8">一次 <code>STLB miss</code> 不只是多查一级表, 而是会把多个 <code>PTE</code> 访存压到 cache hierarchy 上。</li>
+<li class="ml-8"><strong>instruction miss 更贵</strong>: 它更容易直接卡住 fetch/front-end。</li>
+<li class="ml-8"><strong>data miss 较便宜</strong>: 在 OoO core 中, 一部分 latency 还能被 memory-level parallelism 隐藏。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="baseline" class="text-2xl mt-2 font-sans">Baseline 痛点</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">厂商常用的 <code>STLB</code> replacement 仍接近 <code>LRU</code>, 或像 <code>CHiRP</code> 一样<strong>不区分 instruction/data PTE</strong>。</li>
+<li class="ml-8">这等于默认“所有 translation miss 代价相同”, 但对 big-code server app 这个前提不成立。</li>
+<li class="ml-8">只在 STLB 中偏袒 instruction 也不够: 它会制造更多 <strong>data page walk</strong>, 进一步冲击 <code>L2C/LLC</code>。</li>
+<li class="ml-8">所以问题不是单独优化 <code>STLB</code> 或 <code>cache</code>, 而是要做 <strong>cooperative replacement</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Chasapis_-_2025_-_Instruction-Aware_Cooperative_TLB_and_Cache_Replacement_Policies_images/_page_4_Figure_12.jpeg" width="760" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">在 Qualcomm server workloads 上, <strong>越偏向保留 instruction entry, IPC 越高</strong>。</li>
+<li class="ml-8">反过来若优先保 data entry, 性能会下降; <code>SPEC</code> 基本不敏感, 因为其 code footprint 多数已装进 <code>ITLB</code>。</li>
+<li class="ml-8">这说明 shared STLB 中真正该保的不是“最近用过的页”, 而是 <strong>更贵的 instruction translation</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">总体结构</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Chasapis_-_2025_-_Instruction-Aware_Cooperative_TLB_and_Cache_Replacement_Policies_images/_page_7_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 430px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>iTP</strong>: 在 <code>STLB</code> 中让 instruction translation 站在 recency stack 的高位。</li>
+<li class="ml-8"><strong>xPTP</strong>: 在 <code>L2C</code> 中尽量别踢掉保存 <strong>data PTE</strong> 的 block。</li>
+<li class="ml-8"><strong>Adaptive gate</strong>: 当 <code>STLB MPKI &gt; T1</code> 才启用 <code>xPTP</code>, 否则退回 <code>LRU</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1itp" class="text-2xl mt-2 font-sans">机制1：iTP</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Chasapis_-_2025_-_Instruction-Aware_Cooperative_TLB_and_Cache_Replacement_Policies_images/_page_5_Figure_11.jpeg" width="760" style="max-width: 92%; max-height: 350px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>插入</strong>: data 放 <code>LRUpos</code>; instruction 放 <code>MRUpos - N</code>。</li>
+<li class="ml-8"><strong>提升</strong>: 高频 instruction hit 才升到 <code>MRUpos</code>; data hit 只到 <code>LRUpos + M</code>。</li>
+<li class="ml-8"><strong>目标</strong>: 用更便宜的 data miss, 换掉更贵的 instruction miss; 参数 <strong><code>N=4, M=8</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2xptp" class="text-2xl mt-2 font-sans">机制2：xPTP</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Chasapis_-_2025_-_Instruction-Aware_Cooperative_TLB_and_Cache_Replacement_Policies_images/_page_6_Figure_7.jpeg" width="700" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>xPTP</code> 给 <code>L2C block</code> 和 <code>L2C MSHR</code> 加一个 <strong>Type bit</strong>, 标记该块是否存放 <code>data PTE</code>。</li>
+<li class="ml-8">miss 时同时找两个候选: 普通 <code>LRU victim</code> 与“<strong>不含 data PTE</strong> 的备选 victim”。</li>
+<li class="ml-8">规则很简单: <code>victim = LRUpos if ALT_VICTIMpos &gt;= LRUpos + K else ALT_VICTIMpos</code>, 其中 <strong><code>K=8</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="miss" class="text-2xl mt-2 font-sans">一次 miss 如何流动</h1>
+<ol>
+<li class="ml-8">instruction/data 请求在 <code>L1 TLB</code> miss 后访问 shared <code>STLB</code>。</li>
+<li class="ml-8">若 <code>STLB miss</code>, <code>STLB MSHR</code> 记录 <strong>Type</strong>, 然后启动 page walk。</li>
+<li class="ml-8">若 page-walk reference 在 <code>L2C</code> miss, <code>xPTP</code> 把 Type 传播到 <code>L2C MSHR</code> 与最终 <code>L2C block</code>。</li>
+<li class="ml-8">page walk 完成后, <code>iTP</code> 按 Type/Freq 决定 translation 在 <code>STLB</code> 的插入位置。</li>
+<li class="ml-8">runtime 端每 <code>1000</code> 条动态指令统计一次 <code>STLB MPKI</code>; 高于阈值 <code>T1</code> 才开启 <code>xPTP</code>。</li>
+</ol></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">硬件账单</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">结构</th>
+<th style="text-align: left;">新增元数据</th>
+<th style="text-align: left;">作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>STLB entry</code></td>
+<td style="text-align: left;"><code>1b Type + 3b Freq</code></td>
+<td style="text-align: left;">驱动 iTP</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>STLB MSHR</code></td>
+<td style="text-align: left;"><code>1b Type</code></td>
+<td style="text-align: left;">记录 miss 来源</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>L2C block</code></td>
+<td style="text-align: left;"><code>1b Type</code></td>
+<td style="text-align: left;">标记 data PTE</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>L2C MSHR</code></td>
+<td style="text-align: left;"><code>1b Type</code></td>
+<td style="text-align: left;">传播 Type</td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 <strong>1536-entry STLB</strong>, iTP 的额外存储仅 <strong><code>768B</code></strong>。</li>
+<li class="ml-8">论文声称对 <strong>1536-entry 及以上 STLB</strong> 不增加访问延迟; 更小 STLB 可能需要把 metadata 做成旁路小结构。</li>
+<li class="ml-8">这不是重型 predictor, 更像 <strong>低成本 metadata + policy retiming</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Simulator</strong>: <code>ChampSim</code>, 5-level radix-tree page table, split <code>PSC</code>, x86 page walker。</li>
+<li class="ml-8"><strong>关键配置</strong>: <code>64-entry ITLB</code>, <code>64-entry DTLB</code>, <code>1536-entry STLB</code>, <code>512KB L2C</code>, <code>2MB LLC/core</code>。</li>
+<li class="ml-8"><strong>Workloads</strong>: <code>120</code> 个单线程 Qualcomm server traces, <code>75</code> 个双硬件线程组合; 另用 <code>SPEC 2006/2017</code> 做 motivation。</li>
+<li class="ml-8"><strong>Baselines</strong>: <code>TDRRIP</code>, <code>PTP</code>, <code>CHiRP</code>, 以及这些方案与 iTP 的组合; 还测了 <code>SHiP/Mockingjay</code> 和 <code>2MB page</code> 场景。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ipc" class="text-2xl mt-2 font-sans">主结果：IPC</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Chasapis_-_2025_-_Instruction-Aware_Cooperative_TLB_and_Cache_Replacement_Policies_images/_page_9_Figure_2.jpeg" width="800" style="max-width: 92%; max-height: 380px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>iTP</code> 单独只有 <strong><code>+2.2%</code></strong>: 只偏袒 instruction translation 还不够。</li>
+<li class="ml-8">配上 <code>xPTP</code> 后, 单线程 geomean 到 <strong><code>+18.9%</code></strong>; 明显高于 <code>TDRRIP 9.3%</code>, <code>PTP 7.1%</code>, <code>CHiRP ≈ 0%</code>。</li>
+<li class="ml-8">双硬件线程下仍有 <strong><code>+11.4%</code></strong>, 说明收益不只来自“理想单核”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么会赢</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Chasapis_-_2025_-_Instruction-Aware_Cooperative_TLB_and_Cache_Replacement_Policies_images/_page_10_Figure_2.jpeg" width="860" style="max-width: 92%; max-height: 430px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">单线程下, <code>STLB MPKI: 1.8 -&gt; 1.6</code>, <code>STLB miss latency: 170.9 -&gt; 92.3</code>。</li>
+<li class="ml-8"><code>L2C MPKI</code> 虽上升 <strong><code>30.6 -&gt; 46.5</code></strong>, 但 <code>LLC MPKI</code> 同时下降 <strong><code>13.8 -&gt; 8.4</code></strong>。</li>
+<li class="ml-8">本质是: <strong>把更贵的 deep miss 换成更多但更浅的 miss</strong>, 并用 <code>xPTP</code> 降低 data page walk 的 cache 代价。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">敏感性：大页会削弱收益</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Chasapis_-_2025_-_Instruction-Aware_Cooperative_TLB_and_Cache_Replacement_Policies_images/_page_12_Figure_5.jpeg" width="760" style="max-width: 92%; max-height: 350px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">当更多 code/data 映射到 <code>2MB</code> pages, <code>STLB</code> 压力下降, 所有方案的收益都变小。</li>
+<li class="ml-8">但在 <strong>10%</strong> large-page 覆盖时, <code>iTP+xPTP</code> 仍有 <strong>单线程 <code>10.1%</code> / 双线程 <code>8.4%</code></strong> 提升。</li>
+<li class="ml-8">即使 <strong>100%</strong> 都用 <code>2MB</code> page, 双线程下仍有 <strong><code>4.2%</code></strong>; 说明设计不是只对 4KB-only 人造场景有效。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">这篇论文最重要的 insight 是: <strong>shared STLB 不该优化“平均 miss”, 而该优化“最贵的 miss”</strong>。</li>
+<li class="ml-8"><code>iTP+xPTP</code> 把 instruction-side 的翻译代价转移到 data-side, 再用 cache policy 把副作用收回来。</li>
+<li class="ml-8">它用很小的 metadata 开销, 换到了接近“加大 STLB 容量 / split STLB”才能达到的收益。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>优点</strong>: 问题定义很准, 协同设计完整, 而且不是靠超复杂 predictor 堆出来的结果。</li>
+<li class="ml-8"><strong>脆弱假设</strong>: 论文几乎把收益建立在 Qualcomm 的 big-code server traces 上, workload 泛化性还不够强。</li>
+<li class="ml-8"><strong>缺失实验</strong>: 没有真正给 <code>RTL/timing/power</code> 级别的实现证据, 对产品化风险交代不足。</li>
+<li class="ml-8"><strong>后续方向</strong>: 可把 <code>Type</code> 扩展成更细的 <strong>translation criticality class</strong>, 或把 <code>xPTP</code> 与 code-aware <code>L2</code> policy 联合。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>
