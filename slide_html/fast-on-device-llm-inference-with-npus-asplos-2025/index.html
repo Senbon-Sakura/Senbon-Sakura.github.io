@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> fast-on-device-llm-inference-with-npus-asplos-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="fast-on-device-llm-inference-with-npus" class="text-2xl mt-2 font-sans">Fast On-device LLM Inference with NPUs</h1>
+<h2 id="llmnpu-npu-llm-prefill" class="text-xl mt-2 pb-2 font-sans">llm.npu：用手机 NPU 加速端侧 LLM Prefill</h2>
+<p class="font-serif my-1">Daliang Xu, Hao Zhang, Liming Yang, Ruiqi Liu, Gang Huang, Mengwei Xu, Xuanzhe Liu<br/>
+Peking University, Beijing University of Posts and Telecommunications<br/>
+ASPLOS 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-04-06</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: 端侧真实 workload 往往不是 <code>decode-bound</code>，而是 <strong><code>prefill-bound</code></strong>。</li>
+<li class="ml-8"><strong>方法</strong>: llm.npu 用 <strong>chunk-sharing graph + shadow outlier execution + out-of-order subgraph scheduling</strong>，把 <code>INT8 MatMul</code> 主路径推给手机 NPU。</li>
+<li class="ml-8"><strong>结果</strong>: 平均 <strong><code>22.4x</code></strong> prefill speedup、<strong><code>30.7x</code></strong> energy saving，1024-token 场景最高 <strong><code>43.6x</code></strong> 提速。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="prefill" class="text-2xl mt-2 font-sans">为什么先救 Prefill</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-21/Xu_-_2025_-_Fast_On-device_LLM_Inference_with_NPUs_images/_page_3_Figure_4.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Figure 1 的关键信号很直接: UI automation、邮件回复、chat summary 里，<strong>prefill 占总时延 <code>88.3%–98.8%</code>（CPU）</strong>。</li>
+<li class="ml-8">就算换成 mobile GPU，prefill 仍占 <strong><code>54.2%–91.7%</code></strong>；随着 prompt 变长，占比还会继续上升。</li>
+<li class="ml-8">论文的选题判断因此很准: <strong>端侧长 prompt LLM，先救 prefill 比先救 decode 更值钱</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="npu" class="text-2xl mt-2 font-sans">NPU 很强但不能直上</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">路径</th>
+<th style="text-align: left;">数据类型</th>
+<th style="text-align: left;">延迟</th>
+<th style="text-align: left;">含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">NPU</td>
+<td style="text-align: left;">INT8</td>
+<td style="text-align: left;"><code>0.9 ms</code></td>
+<td style="text-align: left;">baseline</td>
+</tr>
+<tr>
+<td style="text-align: left;">CPU</td>
+<td style="text-align: left;">INT8</td>
+<td style="text-align: left;"><code>4.2 ms</code></td>
+<td style="text-align: left;">慢 <code>4.6x</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">GPU</td>
+<td style="text-align: left;">FP16</td>
+<td style="text-align: left;"><code>1.7 ms</code></td>
+<td style="text-align: left;">慢 <code>1.9x</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">NPU</td>
+<td style="text-align: left;">FP16</td>
+<td style="text-align: left;"><code>252 ms</code></td>
+<td style="text-align: left;">慢 <code>193x</code></td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">Mobile NPU 适合 <strong>INT8 SIMD MatMul</strong>，但对 <strong>FP16</strong> 极弱。</li>
+<li class="ml-8">LLM 直接上 NPU 会遇到三道鸿沟: <strong>dynamic prompt shape</strong>、<strong>outlier 破坏 per-tensor quantization</strong>、<strong>Attention/Norm 仍要 float</strong>。</li>
+<li class="ml-8">对 Gemma-2B，单次 graph build 约 <strong><code>360 ms</code></strong>，graph optimization 约 <strong><code>11.54 s</code></strong>；若每个 prompt length 都重编译，系统直接不可用。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="llmnpu" class="text-2xl mt-2 font-sans">llm.npu 总体结构</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-21/Xu_-_2025_-_Fast_On-device_LLM_Inference_with_NPUs_images/_page_5_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Preparation</strong>: <code>W8A8</code> 量化，预构建 fixed-length chunk graphs，离线 profile outlier 与子图时延。</li>
+<li class="ml-8"><strong>Execution</strong>: <code>Linear/FFN</code> 走 NPU，<code>Attention/LayerNorm/outlier compensation</code> 走 CPU/GPU，再用调度把 bubble 压缩掉。</li>
+<li class="ml-8">核心目标不是 “all-on-NPU”，而是 <strong>最大化 NPU-friendly 工作占比，同时控制异构边界成本</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1chunk-sharing" class="text-2xl mt-2 font-sans">机制1：Chunk-sharing</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-21/Xu_-_2025_-_Fast_On-device_LLM_Inference_with_NPUs_images/_page_5_Figure_10.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">先把变长 prompt 切成固定长度 chunk，保留 decoder-only 的因果依赖。</li>
+<li class="ml-8">再把子图拆成 <strong>static operators</strong> 与 <strong>dynamic operators</strong>: 前者跨 chunk 共享，后者按 chunk 单独保留。</li>
+<li class="ml-8">这样解决的不是算子速度，而是 <strong>NPU graph 准备成本与常驻内存爆炸</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么它有效</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">在 Qwen1.5-1.8B 上，<code>144</code> 个子图里有 <code>120</code> 个可以共享。</li>
+<li class="ml-8">当 <code>prompt=1024</code>、<code>chunk=256</code> 时，chunk-sharing graph 最多可减少 <strong><code>75%</code> 内存，即 <code>7.2 GB</code></strong>。</li>
+<li class="ml-8">论文经验上把 <code>chunk length</code> 选为 <strong><code>256</code></strong>，平衡 NPU 利用率与 padding 浪费。</li>
+<li class="ml-8">这一步让 “dynamic prompt 触发反复 graph rebuild” 变成 “固定 graph 复用 + 少量动态 attention path”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2shadow-outlier" class="text-2xl mt-2 font-sans">机制2：Shadow outlier</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-21/Xu_-_2025_-_Fast_On-device_LLM_Inference_with_NPUs_images/_page_6_Picture_4.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">论文不做 <code>per-group MatMul</code>，而是把超出量化范围的极少数 activation outlier 抽出，交给 CPU/GPU 补算。</li>
+<li class="ml-8">主路径仍保持 <strong>NPU 上的 per-tensor <code>W8A8</code> MatMul</strong>，从而避免 group quantization 在手机 NPU 上的巨大低效。</li>
+<li class="ml-8">直觉上它是在把一个“全张量精度问题”改写成“极少数通道的稀疏补偿问题”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="outlier" class="text-2xl mt-2 font-sans">为什么 outlier 路线可行</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-21/Xu_-_2025_-_Fast_On-device_LLM_Inference_with_NPUs_images/_page_6_Figure_11.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Figure 10 显示单次推理通常只有 <strong><code>0.1%–0.3%</code> channel</strong> 含 outlier，也就是约 <strong><code>5–15</code> 个通道</strong>。</li>
+<li class="ml-8">因此 CPU shadow execution 足够稀疏，理论上可以被 NPU 主路径隐藏。</li>
+<li class="ml-8">为降低副作用，作者再加两步: <strong>hot-channel caching</strong> 与 <strong>top-85% unimportant layers pruning</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="shadow" class="text-2xl mt-2 font-sans">Shadow 的代价也不小</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">若简单实现，CPU 侧要再保留一份 MatMul 权重，内存几乎翻倍。</li>
+<li class="ml-8">CPU-NPU reduction synchronization 甚至可吃掉 <strong><code>29.7%</code> end-to-end latency</strong> 和 <strong><code>20.1%</code> energy</strong>。</li>
+<li class="ml-8">论文通过 “少量 hot channels 常驻 + 其余权重按需取回” 把 shadow memory overhead 再降 <strong><code>34.3%</code></strong>。</li>
+<li class="ml-8">所以这个机制真正聪明之处不是公式，而是 <strong>把稀疏补偿工程化到可部署</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="3" class="text-2xl mt-2 font-sans">机制3：乱序调度</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-21/Xu_-_2025_-_Fast_On-device_LLM_Inference_with_NPUs_images/_page_7_Picture_10.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">简单 overlap CPU/GPU 与 NPU 还不够，论文测得 critical-path bubble rate 高达 <strong><code>37%</code></strong>。</li>
+<li class="ml-8">做法是把每个 chunk 再切成 subgraph；只要依赖满足，就允许后续 chunk 的 ready subgraph 提前执行。</li>
+<li class="ml-8">heuristic 很 systems: <strong>优先减少 NPU stall</strong>，因为 prefill 阶段 NPU 才是主要关键路径。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="prefill" class="text-2xl mt-2 font-sans">一次 Prefill 如何流动</h1>
+<ol>
+<li class="ml-8">收到变长 prompt 后，runtime 先按固定 <code>chunk=256</code> 切分请求。</li>
+<li class="ml-8">每个 chunk 进入共享的 static subgraph；attention 等 dynamic path 选择对应维度子图。</li>
+<li class="ml-8"><code>Linear/FFN</code> 等 INT8-friendly 子图送入 NPU；<code>Attention/Norm/outlier</code> 走 CPU/GPU。</li>
+<li class="ml-8">调度器不按 chunk 严格顺序，而是谁更能减少 <strong>NPU stall</strong> 就先跑谁。</li>
+<li class="ml-8">最终把每个 chunk 的结果因果拼接，得到正确的 prefill 输出。</li>
+</ol></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">系统开销与代价</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">项目</th>
+<th style="text-align: left;">结果</th>
+<th style="text-align: left;">含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">代码实现</td>
+<td style="text-align: left;"><code>10K+</code> C/C++/asm</td>
+<td style="text-align: left;">强工程系统</td>
+</tr>
+<tr>
+<td style="text-align: left;">总内存</td>
+<td style="text-align: left;">最多 <code>1.32x</code> baseline</td>
+<td style="text-align: left;">不是轻量部署</td>
+</tr>
+<tr>
+<td style="text-align: left;">shadow 额外内存</td>
+<td style="text-align: left;"><code>0.6%–1%</code> 总内存</td>
+<td style="text-align: left;">算法本身开销小</td>
+</tr>
+<tr>
+<td style="text-align: left;">GPU-NPU 协同</td>
+<td style="text-align: left;">E2E 再降 <code>80–90 ms</code></td>
+<td style="text-align: left;">但当前未完整实现</td>
+</tr>
+<tr>
+<td style="text-align: left;">适配性</td>
+<td style="text-align: left;">绑定 <code>QNN + Hexagon</code></td>
+<td style="text-align: left;">跨平台迁移有成本</td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">这篇论文付出的“硬件账单”不是 area，而是 <strong>memory、runtime complexity、backend 绑定与实现复杂度</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">实验方法</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>设备</strong>: Redmi K70 Pro (<code>Snapdragon 8 Gen 3, 24GB</code>) 与 Redmi K60 Pro (<code>Snapdragon 8 Gen 2, 16GB</code>)。</li>
+<li class="ml-8"><strong>模型</strong>: <code>Qwen1.5-1.8B</code>, <code>Gemma-2B</code>, <code>Phi-2-2.7B</code>, <code>LLaMA-2-7B</code>, <code>Mistral-7B</code>。</li>
+<li class="ml-8"><strong>Baseline</strong>: <code>llama.cpp</code>, <code>MNN</code>, <code>TFLite</code>, <code>MLC-LLM</code>, <code>PowerInfer-v2</code>。</li>
+<li class="ml-8"><strong>任务</strong>: LongBench、DroidTask、Persona-Chat；accuracy 用 <code>LAMBADA/MMLU/WinoGrande/OpenBookQA/HellaSwag</code>。</li>
+<li class="ml-8"><strong>默认设置</strong>: <code>chunk=256</code>，outlier pruning rate=<code>85%</code>，decode 仍走 MLLM CPU backend。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="prefill" class="text-2xl mt-2 font-sans">Prefill 性能很强</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-21/Xu_-_2025_-_Fast_On-device_LLM_Inference_with_NPUs_images/_page_9_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">1024-token 场景下，llm.npu 相比 <code>llama.cpp-CPU / MNN-CPU / MLC-GPU / TFLite-GPU</code> 可达 <strong><code>7.3x–43.6x</code></strong> speedup。</li>
+<li class="ml-8">对同样用 NPU 的 <code>PowerInfer-v2</code>，仍有 <strong><code>3.28x–5.6x</code></strong> 优势，说明赢点不是 “用了 NPU” 本身，而是三层重构。</li>
+<li class="ml-8">prompt 越长收益越大，和论文对 prefill bottleneck 的分析完全一致。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">节能也成立</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-21/Xu_-_2025_-_Fast_On-device_LLM_Inference_with_NPUs_images/_page_9_Figure_4.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">在 Redmi K60 Pro 上，1024-token 场景对 <code>llama.cpp-CPU / MLC-GPU / TFLite-GPU</code> 可节能 <strong><code>1.85x–59.52x</code></strong>。</li>
+<li class="ml-8">这说明论文不是靠“同时开更多硬件单元硬堆性能”，而是在利用 <strong>NPU 的整数能效优势</strong>。</li>
+<li class="ml-8">对端侧系统来说，这个结果和 speedup 一样关键，因为电量与发热直接影响可部署性。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="e2e" class="text-2xl mt-2 font-sans">E2E 与精度怎么看</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>LongBench / DroidTask</strong>: prompt 长、输出短，端到端收益明显，可到 <strong><code>1.4x–32.8x</code></strong>。</li>
+<li class="ml-8"><strong>Persona-Chat</strong>: 输出 token 多，decode 占比高，因此 llm.npu 对 <code>PowerInfer-v2/TFLite</code> 只剩约 <strong><code>1.1x</code></strong> 优势。</li>
+<li class="ml-8"><strong>Accuracy</strong>: 相对 FP16，llm.npu 在五个 benchmark 上平均退化约 <strong><code>-1.2% / -0.0% / -0.1% / -0.5% / +0.2%</code></strong>。</li>
+<li class="ml-8">相比之下，<code>SmoothQuant</code> 平均可掉 <strong><code>-5.1%</code> 到 <code>-14.9%</code></strong>，<code>K-Quant</code> 最差平均可到 <strong><code>-31.3%</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">消融说明真因</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-21/Xu_-_2025_-_Fast_On-device_LLM_Inference_with_NPUs_images/_page_12_Figure_12.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">naive NPU offload 反而会 <strong>慢 <code>2.55x–2.68x</code></strong>，说明这不是“把算子搬去 NPU”就自然成立的系统。</li>
+<li class="ml-8"><code>chunk-sharing graph</code> 贡献 <strong><code>1.46x–5.09x</code></strong>，<code>shadow outlier</code> 再给 <strong><code>3.91x–8.68x</code></strong>。</li>
+<li class="ml-8"><code>out-of-order execution</code> 继续把 prefill latency 降 <strong><code>18%–44%</code></strong>，负责榨干异构协同效率。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>优点</strong>: 问题画像很准，三层机制正好对应 dynamic shape、outlier quantization、异构调度三道鸿沟。</li>
+<li class="ml-8"><strong>边界</strong>: 它更像 <strong>“Fast On-device LLM Prefill with NPUs”</strong>，并没有真正解决 decode。</li>
+<li class="ml-8"><strong>代价</strong>: 强绑定 <code>Qualcomm Hexagon + QNN</code>，整体内存最高仍有 <strong><code>1.32x</code></strong>。</li>
+<li class="ml-8"><strong>后续</strong>: 做完整 <strong>GPU-NPU 协同</strong>，再叠加 <code>prefix cache / KV cache / speculative decoding</code>。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

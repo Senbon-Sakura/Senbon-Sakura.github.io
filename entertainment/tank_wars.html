@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>坦克大战 5.1 - 全方位伏击版</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --ui-bg: #1e1e1e;
+            --text-color: #e0e0e0;
+            --p1-color: #ffca28;
+            --p2-color: #76ff03;
+            --accent: #e91e63;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        #game-wrapper {
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            border: 2px solid #444;
+            margin-top: 10px;
+        }
+
+        canvas {
+            background-color: #000;
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.94);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            backdrop-filter: blur(5px);
+        }
+
+        h1 {
+            font-size: 48px;
+            margin-bottom: 5px;
+            background: linear-gradient(to right, var(--p1-color), var(--p2-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+            text-align: center;
+        }
+
+        .subtitle { color: #888; font-size: 14px; margin-bottom: 20px; }
+        .btn-group { display: flex; flex-direction: column; gap: 10px; width: 240px; }
+
+        button {
+            padding: 12px 0;
+            font-size: 16px;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            border: 1px solid #555;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        button:active { background: #fff; color: #000; }
+
+        #help-content {
+            width: 90%; height: 60%; overflow-y: auto; text-align: left;
+            padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid #444; margin-bottom: 20px;
+            font-size: 12px; line-height: 1.5;
+        }
+        #help-content h3 { color: var(--p1-color); margin-top: 10px; border-bottom: 1px solid #444; }
+
+        #hud {
+            width: 700px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--ui-bg);
+            padding: 5px 10px;
+            box-sizing: border-box;
+            border-bottom: 2px solid #444;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .hud-left { display: flex; gap: 15px; }
+        .p1-score { color: var(--p1-color); }
+        .p2-score { color: var(--p2-color); }
+        .control-btn { padding: 4px 8px; font-size: 12px; width: auto; background: #333; }
+
+        #mobile-controls { display: none; }
+
+        /* 竖屏时的横屏提示（主要针对手机） */
+        #rotate-tip {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.95);
+            z-index: 200;
+            color: #fff;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        #rotate-tip h2 {
+            margin-bottom: 10px;
+            font-size: 22px;
+        }
+        #rotate-tip p {
+            font-size: 14px;
+            color: #ccc;
+        }
+
+        @media (orientation: portrait) and (max-width: 850px) {
+            #rotate-tip { display: flex; }
+        }
+
+        @media (max-width: 850px) {
+            #game-wrapper { width: 95vw; height: auto; }
+            canvas { width: 100% !important; height: auto !important; }
+            #hud { width: 95vw; font-size: 12px; }
+            h1 { font-size: 32px; }
+            
+            #mobile-controls {
+                display: flex; justify-content: space-between; align-items: flex-end;
+                width: 90vw; height: 180px; position: fixed; bottom: 20px; left: 5vw; z-index: 100;
+                pointer-events: none;
+            }
+            .d-pad, .action-pad { pointer-events: auto; }
+            .d-pad { position: relative; width: 140px; height: 140px; }
+            .d-btn {
+                position: absolute; width: 45px; height: 45px;
+                background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 8px; display: flex; align-items: center; justify-content: center;
+                color: rgba(255,255,255,0.8); font-size: 20px;
+            }
+            .d-btn:active { background: rgba(255, 202, 40, 0.4); border-color: var(--p1-color); }
+            .up { top: 0; left: 47px; } .down { bottom: 0; left: 47px; }
+            .left { top: 47px; left: 0; } .right { top: 47px; right: 0; }
+            .action-pad { display: flex; flex-direction: column; align-items: center; gap: 15px; margin-bottom: 10px; }
+            .act-btn {
+                border-radius: 50%; background: rgba(233, 30, 99, 0.2); border: 2px solid rgba(233, 30, 99, 0.5);
+                color: #fff; display: flex; align-items: center; justify-content: center;
+            }
+            .act-btn:active { background: rgba(233, 30, 99, 0.6); transform: scale(0.95); }
+            #btn-fire { width: 75px; height: 75px; font-weight: bold; font-size: 14px; }
+            #btn-pause-mob { width: 40px; height: 40px; font-size: 12px; background: rgba(255,255,255,0.1); border-color: #666; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="hud">
+        <div class="hud-left">
+            <div class="p1-score">P1 ❤ <span id="p1-lives">3</span></div>
+            <div class="p2-score" id="p2-score-box">P2 ❤ <span id="p2-lives">3</span></div>
+            <div style="color:#fff" id="common-score">SCORE: <span id="score-val">0</span></div>
+        </div>
+        <div style="display:flex; gap:10px;">
+            <button class="control-btn" id="btn-pause">暂停</button>
+            <button class="control-btn" id="btn-menu">菜单</button>
+            <button class="control-btn" id="btn-fullscreen">全屏</button>
+        </div>
+    </div>
+
+    <div id="game-wrapper">
+        <canvas id="gameCanvas" width="700" height="700"></canvas>
+        
+        <div id="start-screen" class="overlay">
+            <h1>TANK WAR 5.1</h1>
+            <div class="subtitle">AMBUSH EDITION</div>
+            <div class="btn-group">
+                <button onclick="game.startGame(1)">单人闯关</button>
+                <button onclick="game.startGame(2)">双人协作</button>
+                <button onclick="game.startGame(3)" style="border-color: #e91e63;">双人对战</button>
+                <button onclick="game.showHelp()" style="background:#333;">游戏说明</button>
+            </div>
+        </div>
+
+        <div id="help-screen" class="overlay" style="display: none;">
+            <h2>作战指令</h2>
+            <div id="help-content">
+                <h3>⚠ 警告：全方位伏击</h3>
+                <p>敌人现在会从地图的<b>四个角落</b>和<b>两侧边缘</b>随机出现！时刻留意你的后方！</p>
+                <h3>🎮 操作</h3>
+                <p><b>P1:</b> 方向键 / 屏幕摇杆</p>
+                <p><b>P2:</b> WASD 移动, F 开火</p>
+                <h3>🎁 道具</h3>
+                <p><b>[S] 蓝盾:</b> 10秒无敌。</p>
+                <p><b>[P] 红弹:</b> 超级武器！穿透钢铁和护盾。</p>
+                <p><b>[T] 穿透弹:</b> 无视任何阻隔，子弹可连续击杀多辆坦克。</p>
+                <p><b>[F] 极速:</b> 速度 +50%。</p>
+                <p><b>[L] 爱心:</b> 生命 +1。</p>
+            </div>
+            <button onclick="game.hideHelp()" style="width: 200px;">返回</button>
+        </div>
+
+        <div id="pause-screen" class="overlay" style="display: none;">
+            <h1>PAUSED</h1>
+            <div class="btn-group">
+                <button id="resume-btn">继续游戏</button>
+                <button id="quit-btn">返回菜单</button>
+            </div>
+        </div>
+
+        <div id="game-over-screen" class="overlay" style="display: none;">
+            <h1 id="end-title">GAME OVER</h1>
+            <div id="end-reason" style="color:#ccc; margin-bottom: 20px;"></div>
+            <button id="restart-btn" style="width: 200px;">再来一局</button>
+        </div>
+    </div>
+
+    <div id="mobile-controls">
+        <div class="d-pad">
+            <div class="d-btn up" data-key="ArrowUp">▲</div>
+            <div class="d-btn left" data-key="ArrowLeft">◀</div>
+            <div class="d-btn right" data-key="ArrowRight">▶</div>
+            <div class="d-btn down" data-key="ArrowDown">▼</div>
+        </div>
+        <div class="action-pad">
+            <div class="act-btn" id="btn-pause-mob" data-key="KeyP">II</div>
+            <div class="act-btn" id="btn-fire" data-key="Space">FIRE</div>
+        </div>
+    </div>
+
+    <!-- 竖屏时提示用户横屏 -->
+    <div id="rotate-tip">
+        <h2>建议横屏游玩</h2>
+        <p>请将手机旋转到横屏，以获得更好的游戏体验。</p>
+    </div>
+
+<script>
+/**
+ * Tank Battle 5.1 - Ambush Edition
+ * 更新：敌人随机从4个角落+中间出现，分布更广。
+ */
+
+const CONSTANTS = { TILE: 35, GRID: 20, SIZE: 700, FPS: 60 };
+const TERRAIN = { EMPTY: 0, BRICK: 1, STEEL: 2, WATER: 3, GRASS: 4, ICE: 5 };
+const DIR = { UP: 0, RIGHT: 1, DOWN: 2, LEFT: 3 };
+const TEAM = { NEUTRAL: 0, T1: 1, T2: 2 }; 
+const MODES = { SINGLE: 1, COOP: 2, VERSUS: 3 };
+const ITEMS = { SHIELD: 'S', SUPER: 'P', SPEED: 'F', LIFE: 'L', PIERCING: 'T' };
+
+class Game {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        
+        this.ui = {
+            p1Lives: document.getElementById('p1-lives'),
+            p2Lives: document.getElementById('p2-lives'),
+            p2Box: document.getElementById('p2-score-box'),
+            scoreBox: document.getElementById('common-score'),
+            scoreVal: document.getElementById('score-val'),
+            screens: {
+                start: document.getElementById('start-screen'),
+                help: document.getElementById('help-screen'),
+                pause: document.getElementById('pause-screen'),
+                end: document.getElementById('game-over-screen')
+            },
+            endTitle: document.getElementById('end-title'),
+            endReason: document.getElementById('end-reason')
+        };
+
+        this.state = 'menu'; 
+        this.currentMode = MODES.SINGLE;
+        this.score = 0;
+        
+        this.map = [];
+        this.tanks = [];
+        this.bullets = [];
+        this.items = [];
+        this.keys = {};
+        this.frameCount = 0;
+
+        this.initInput();
+        this.initUI();
+    }
+
+    initUI() {
+        document.getElementById('btn-pause').onclick = () => this.togglePause();
+        document.getElementById('btn-menu').onclick = () => this.toMenu();
+        document.getElementById('resume-btn').onclick = () => this.togglePause();
+        document.getElementById('quit-btn').onclick = () => this.toMenu();
+        document.getElementById('restart-btn').onclick = () => this.startGame(this.currentMode);
+
+        const fsBtn = document.getElementById('btn-fullscreen');
+        if (fsBtn) {
+            fsBtn.onclick = () => {
+                const doc = window.document;
+                const el = doc.documentElement;
+                const isFs = doc.fullscreenElement || doc.webkitFullscreenElement || doc.msFullscreenElement;
+                const request = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+                const exit = doc.exitFullscreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
+                try {
+                    if (!isFs && request) {
+                        request.call(el);
+                    } else if (isFs && exit) {
+                        exit.call(doc);
+                    }
+                } catch (e) {
+                    console.warn('Fullscreen failed:', e);
+                }
+            };
+        }
+
+        const touchBtns = document.querySelectorAll('.d-btn, .act-btn');
+        touchBtns.forEach(btn => {
+            const key = btn.dataset.key;
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault(); 
+                this.keys[key] = true;
+                if(key === 'KeyP') this.togglePause();
+            }, { passive: false });
+            btn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                this.keys[key] = false;
+            }, { passive: false });
+        });
+    }
+
+    initInput() {
+        window.addEventListener('keydown', e => {
+            this.keys[e.code] = true;
+            if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyW','KeyS','KeyA','KeyD'].includes(e.code)) e.preventDefault();
+            if(e.code === 'KeyP') this.togglePause();
+        });
+        window.addEventListener('keyup', e => this.keys[e.code] = false);
+    }
+
+    showHelp() { this.ui.screens.start.style.display = 'none'; this.ui.screens.help.style.display = 'flex'; }
+    hideHelp() { this.ui.screens.help.style.display = 'none'; this.ui.screens.start.style.display = 'flex'; }
+    
+    toMenu() {
+        this.state = 'menu';
+        Object.values(this.ui.screens).forEach(s => s.style.display = 'none');
+        this.ui.screens.start.style.display = 'flex';
+    }
+
+    startGame(mode) {
+        this.currentMode = mode;
+        this.state = 'playing';
+        this.score = 0;
+        this.frameCount = 0;
+        this.tanks = [];
+        this.bullets = [];
+        this.items = [];
+        this.map = this.generateMap(mode);
+
+        this.createPlayer(1, TEAM.T1); 
+
+        if (mode === MODES.COOP) {
+            this.createPlayer(2, TEAM.T1); 
+            this.ui.p2Box.style.display = 'block';
+            this.ui.scoreBox.style.display = 'block';
+        } else if (mode === MODES.VERSUS) {
+            this.createPlayer(2, TEAM.T2); 
+            this.ui.p2Box.style.display = 'block';
+            this.ui.scoreBox.style.display = 'none';
+        } else {
+            this.ui.p2Box.style.display = 'none';
+            this.ui.scoreBox.style.display = 'block';
+        }
+
+        Object.values(this.ui.screens).forEach(s => s.style.display = 'none');
+        if (this.loopId) cancelAnimationFrame(this.loopId);
+        this.loop();
+    }
+
+    togglePause() {
+        if(this.state === 'playing') {
+            this.state = 'paused';
+            this.ui.screens.pause.style.display = 'flex';
+        } else if (this.state === 'paused') {
+            this.state = 'playing';
+            this.ui.screens.pause.style.display = 'none';
+            this.loop();
+        }
+    }
+
+    loop() {
+        if (this.state !== 'playing') return;
+        this.update();
+        this.draw();
+        this.loopId = requestAnimationFrame(() => this.loop());
+    }
+
+    update() {
+        this.frameCount++;
+        this.handleSpawning();
+        if (this.frameCount % 480 === 0) this.regenerateMap();
+
+        for (let i = this.tanks.length - 1; i >= 0; i--) {
+            let t = this.tanks[i];
+            if (t.active) {
+                t.updateBuffs();
+                t.updateCooldown();
+                if (t.isPlayer) t.handleInput(this.keys, this);
+                else t.aiUpdate(this);
+                this.checkItemPickup(t);
+            }
+        }
+
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            let b = this.bullets[i];
+            b.update();
+            if (this.checkBulletCollision(b, i)) continue;
+        }
+
+        this.checkWinCondition();
+        this.updateHUD();
+    }
+
+    handleSpawning() {
+        let spawnRate = this.currentMode === MODES.VERSUS ? 180 : Math.max(60, 180 - Math.floor(this.score/500)*10);
+        if (this.frameCount % spawnRate !== 0) return;
+
+        if (this.currentMode === MODES.VERSUS) {
+            let t1Count = this.tanks.filter(t => t.team === TEAM.T1 && !t.isPlayer && t.active).length;
+            if (t1Count < 2) this.spawnTank(TEAM.T1, false);
+            let t2Count = this.tanks.filter(t => t.team === TEAM.T2 && !t.isPlayer && t.active).length;
+            if (t2Count < 2) this.spawnTank(TEAM.T2, false);
+        } else {
+            let maxEnemies = 4 + Math.floor(this.score / 1500);
+            let enemyCount = this.tanks.filter(t => t.team === TEAM.NEUTRAL && t.active).length;
+            if (enemyCount < maxEnemies) this.spawnTank(TEAM.NEUTRAL, false);
+        }
+    }
+
+    spawnTank(team, isPlayer) {
+        let spawns = [];
+        
+        if (this.currentMode === MODES.VERSUS) {
+            // 对战模式：出生在基地附近
+            if (team === TEAM.T1) spawns = [{x:0, y:19}, {x:2, y:19}, {x:0, y:17}]; 
+            else spawns = [{x:19, y:0}, {x:17, y:0}, {x:19, y:2}]; 
+        } else {
+            // 闯关/协作模式
+            if (isPlayer) {
+                // 玩家固定底部
+                spawns = [{x:8, y:19}, {x:12, y:19}];
+            } else {
+                // 敌人：全图6个点随机生成 (四角 + 中间)
+                spawns = [
+                    {x:0, y:0},   // 左上
+                    {x:19, y:0},  // 右上
+                    {x:0, y:19},  // 左下 (小心!)
+                    {x:19, y:19}, // 右下 (小心!)
+                    {x:0, y:9},   // 左中
+                    {x:19, y:9}   // 右中
+                ];
+                // 随机打乱出生点顺序，增加随机性
+                spawns.sort(() => Math.random() - 0.5);
+            }
+        }
+
+        let pos = null;
+        for (let s of spawns) {
+            let px = s.x * CONSTANTS.TILE, py = s.y * CONSTANTS.TILE;
+            // 检查是否有坦克阻挡
+            if (!this.tanks.some(t => t.active && Math.abs(t.x - px) < 30 && Math.abs(t.y - py) < 30)) {
+                pos = {x: px, y: py}; break;
+            }
+        }
+        if (!pos) return; // 所有出生点都被堵住，稍后再试
+
+        let dir = DIR.DOWN;
+        if (this.currentMode === MODES.VERSUS) {
+             dir = (team === TEAM.T1) ? DIR.UP : DIR.DOWN;
+        } else {
+            if (isPlayer) dir = DIR.UP;
+            // 敌人在下方出生时，面朝上，否则面朝下
+            else dir = (pos.y > 10 * CONSTANTS.TILE) ? DIR.UP : DIR.DOWN;
+        }
+
+        this.tanks.push(new Tank(pos.x, pos.y, dir, team, isPlayer));
+    }
+
+    createPlayer(num, team) {
+        let x = (num===1) ? 8 : 12, y = 19, dir = DIR.UP;
+        if (this.currentMode === MODES.VERSUS) {
+            if (num===1) { x=0; y=19; dir=DIR.UP; }
+            else { x=19; y=0; dir=DIR.DOWN; }
+        }
+        let t = new Tank(x*CONSTANTS.TILE, y*CONSTANTS.TILE, dir, team, true, 'p'+num);
+        this.tanks.push(t);
+    }
+
+    checkBulletCollision(b, idx) {
+        if (b.x < 0 || b.x > CONSTANTS.SIZE || b.y < 0 || b.y > CONSTANTS.SIZE) {
+            this.bullets.splice(idx, 1); return true;
+        }
+
+        const isPiercing = !!b.isPiercing;
+
+        let c = Math.floor(b.x / CONSTANTS.TILE), r = Math.floor(b.y / CONSTANTS.TILE);
+        if (r>=0 && r<CONSTANTS.GRID && c>=0 && c<CONSTANTS.GRID) {
+            let t = this.map[r][c];
+            if (!isPiercing) {
+                // 普通/超级弹：保留原有地形破坏规则
+                if (t === TERRAIN.BRICK) {
+                    this.map[r][c] = TERRAIN.EMPTY;
+                    this.bullets.splice(idx, 1);
+                    return true;
+                } else if (t === TERRAIN.STEEL) {
+                    if (b.isSuper) this.map[r][c] = TERRAIN.EMPTY;
+                    this.bullets.splice(idx, 1);
+                    return true;
+                }
+            }
+            // 穿透弹：完全无视砖块、钢板，不修改地形也不移除子弹
+        }
+
+        let rect = {x: b.x-3, y: b.y-3, size: 6};
+        for (let t of this.tanks) {
+            if (t.active && t.team !== b.team) {
+                if (this.checkRect(rect, t)) {
+                    const ignoreShield = b.isSuper || isPiercing;
+                    if (!t.buffs.shield || ignoreShield) {
+                        if (isPiercing) {
+                            t.lives = 0;
+                            t.active = false;
+                        } else {
+                            t.hit();
+                        }
+                        if (t.lives <= 0) {
+                            if (b.ownerId && b.ownerId.startsWith('p')) this.score += 100;
+                            this.dropItem(t.x, t.y);
+                        }
+                    }
+                    if (!isPiercing) {
+                        this.bullets.splice(idx, 1);
+                        return true;
+                    }
+                    // 穿透弹：不移除子弹，可以继续击穿后续目标
+                }
+            }
+        }
+        return false;
+    }
+
+    checkWinCondition() {
+        const p1 = this.tanks.find(t => t.id === 'p1');
+        const p2 = this.tanks.find(t => t.id === 'p2');
+        let p1Alive = p1 && p1.lives > 0;
+        let p2Alive = p2 && p2.lives > 0;
+
+        if (this.currentMode === MODES.VERSUS) {
+            if (!p1Alive && p2Alive) this.gameOver(false, "P2 (GREEN) WINS!");
+            else if (p1Alive && !p2Alive) this.gameOver(true, "P1 (YELLOW) WINS!");
+            else if (!p1Alive && !p2Alive) this.gameOver(false, "DRAW GAME!");
+        } else {
+            let anyAlive = (p1Alive || (this.currentMode === MODES.COOP && p2Alive));
+            if (!anyAlive) this.gameOver(false, "MISSION FAILED");
+        }
+    }
+
+    gameOver(win, reason) {
+        this.state = 'gameover';
+        this.ui.endTitle.innerText = win ? "VICTORY" : "GAME OVER";
+        this.ui.endTitle.style.color = win ? "#ffca28" : "#e91e63";
+        this.ui.endReason.innerText = reason;
+        this.ui.screens.end.style.display = 'flex';
+    }
+
+    updateHUD() {
+        const p1 = this.tanks.find(t => t.id === 'p1');
+        const p2 = this.tanks.find(t => t.id === 'p2');
+        this.ui.p1Lives.innerText = p1 ? p1.lives : 0;
+        this.ui.p2Lives.innerText = p2 ? p2.lives : 0;
+        this.ui.scoreVal.innerText = this.score;
+    }
+
+    checkItemPickup(tank) {
+        for (let i = this.items.length - 1; i >= 0; i--) {
+            let item = this.items[i];
+            if (this.checkRect({x:item.x, y:item.y, size:30}, tank)) {
+                tank.applyBuff(item.type);
+                this.items.splice(i, 1);
+            }
+        }
+    }
+
+    dropItem(x, y) {
+        if (Math.random() > 0.5) return; 
+        const types = [ITEMS.SHIELD, ITEMS.SUPER, ITEMS.SPEED, ITEMS.LIFE, ITEMS.PIERCING];
+        let w = Math.random();
+        let type = ITEMS.SHIELD;
+        if (w < 0.3) type = ITEMS.SUPER; 
+        else if (w < 0.5) type = ITEMS.PIERCING;
+        else if (w < 0.7) type = ITEMS.SHIELD;
+        else if (w < 0.85) type = ITEMS.SPEED;
+        else type = ITEMS.LIFE;
+        this.items.push({x, y, type});
+    }
+
+    checkRect(r1, r2) {
+        return r1.x < r2.x + r2.size && r1.x + r1.size > r2.x &&
+               r1.y < r2.y + r2.size && r1.y + r1.size > r2.y;
+    }
+
+    canMove(tank, nx, ny) {
+        if (nx < 0 || nx + tank.size > CONSTANTS.SIZE || ny < 0 || ny + tank.size > CONSTANTS.SIZE) return false;
+        const pts = [{x:nx, y:ny}, {x:nx+tank.size, y:ny}, {x:nx, y:ny+tank.size}, {x:nx+tank.size, y:ny+tank.size}];
+        for (let p of pts) {
+            let c = Math.floor(p.x / CONSTANTS.TILE), r = Math.floor(p.y / CONSTANTS.TILE);
+            if(c<0)c=0; if(c>=20)c=19; if(r<0)r=0; if(r>=20)r=19;
+            let t = this.map[r][c];
+            if (t === TERRAIN.BRICK || t === TERRAIN.STEEL || t === TERRAIN.WATER) return false;
+        }
+        for (let other of this.tanks) {
+            if (other !== tank && other.active && this.checkRect({x:nx, y:ny, size:tank.size}, other)) return false;
+        }
+        return true;
+    }
+
+    generateMap(mode) {
+        let m = Array(20).fill(0).map(()=>Array(20).fill(0));
+        for(let r=0; r<20; r++) {
+            for(let c=0; c<20; c++) {
+                let rnd = Math.random();
+                if (rnd < 0.1) m[r][c] = TERRAIN.BRICK;
+                else if (rnd < 0.15) m[r][c] = TERRAIN.STEEL;
+                else if (rnd < 0.18) m[r][c] = TERRAIN.GRASS;
+                else if (rnd < 0.20) m[r][c] = TERRAIN.WATER;
+            }
+        }
+        const clear = (cx, cy) => {
+            for(let y=cy-1; y<=cy+1; y++)
+                for(let x=cx-1; x<=cx+1; x++)
+                    if(y>=0&&y<20&&x>=0&&x<20) m[y][x] = TERRAIN.EMPTY;
+        };
+        if (mode === MODES.VERSUS) {
+            for(let r=0; r<20; r++) for(let c=0; c<10; c++) m[19-r][19-c] = m[r][c];
+            clear(0, 19); clear(19, 0);
+        } else {
+            // 清理关键出生点，防止坦克卡在墙里
+            clear(8, 19); clear(12, 19); // 玩家基地
+            clear(0,0); clear(19,0);     // 敌人上路
+            clear(0,19); clear(19,19);   // 敌人下路 (新增)
+            clear(0,9); clear(19,9);     // 敌人中路 (新增)
+        }
+        return m;
+    }
+
+    regenerateMap() {
+        let r = Math.floor(Math.random()*20), c = Math.floor(Math.random()*20);
+        let safe = !this.tanks.some(t => Math.abs(t.x - c*35)<35 && Math.abs(t.y - r*35)<35);
+        if (safe && this.map[r][c] === TERRAIN.EMPTY) {
+            if (this.currentMode === MODES.VERSUS) {
+                this.map[r][c] = TERRAIN.BRICK; this.map[19-r][19-c] = TERRAIN.BRICK;
+            } else {
+                this.map[r][c] = Math.random() > 0.5 ? TERRAIN.BRICK : TERRAIN.STEEL;
+            }
+        }
+    }
+
+    draw() {
+        this.ctx.fillStyle = '#000';
+        this.ctx.fillRect(0, 0, CONSTANTS.SIZE, CONSTANTS.SIZE);
+        this.drawMap(false);
+        this.items.forEach(it => {
+            let color = '#fff';
+            if (it.type === ITEMS.SUPER) color = '#ff5252';
+            else if (it.type === ITEMS.PIERCING) color = '#00e5ff';
+            else if (it.type === ITEMS.SHIELD) color = '#448aff';
+            else if (it.type === ITEMS.SPEED) color = '#00e676';
+            else if (it.type === ITEMS.LIFE) color = '#e91e63';
+            if (Math.floor(this.frameCount/15)%2===0) {
+                this.ctx.fillStyle = color; this.ctx.fillRect(it.x+4, it.y+4, 27, 27);
+                this.ctx.fillStyle = '#fff'; this.ctx.font = 'bold 20px Arial'; this.ctx.fillText(it.type, it.x+10, it.y+25);
+            }
+        });
+        this.tanks.forEach(t => { if(t.active) t.draw(this.ctx); });
+        this.bullets.forEach(b => {
+            if (b.isPiercing) this.ctx.fillStyle = '#00e5ff';
+            else if (b.isSuper) this.ctx.fillStyle = '#ff1744';
+            else this.ctx.fillStyle = '#fff';
+            this.ctx.fillRect(b.x-2, b.y-2, 5, 5);
+        });
+        this.drawMap(true);
+    }
+
+    drawMap(top) {
+        for(let r=0; r<CONSTANTS.GRID; r++) for(let c=0; c<CONSTANTS.GRID; c++) {
+            let t = this.map[r][c], x=c*35, y=r*35;
+            if(!top) {
+                if(t===TERRAIN.ICE){this.ctx.fillStyle='#e0f7fa';this.ctx.fillRect(x,y,35,35);}
+                if(t===TERRAIN.WATER){this.ctx.fillStyle='#0288d1';this.ctx.fillRect(x,y,35,35);}
+                if(t===TERRAIN.BRICK){this.ctx.fillStyle='#795548';this.ctx.fillRect(x+1,y+1,33,33);this.ctx.fillStyle='#5d4037';this.ctx.fillRect(x+4,y+4,12,8);}
+                if(t===TERRAIN.STEEL){this.ctx.fillStyle='#9e9e9e';this.ctx.fillRect(x,y,35,35);this.ctx.strokeStyle='#eee';this.ctx.strokeRect(x+5,y+5,25,25);}
+            } else {
+                if(t===TERRAIN.GRASS){this.ctx.fillStyle='#2e7d32';for(let k=0;k<4;k++)this.ctx.fillRect(x+2+k*8,y,4,35);}
+            }
+        }
+    }
+}
+
+class Tank {
+    constructor(x, y, dir, team, isPlayer, id) {
+        this.x = x; this.y = y; this.dir = dir; this.team = team; this.isPlayer = isPlayer;
+        this.id = id || ('ai_'+Math.random()); this.size = 30; this.active = true;
+        this.lives = isPlayer ? 3 : 1; this.cooldown = 0;
+        this.spawnX = x; this.spawnY = y;
+        this.buffs = { shield: 0, super: 0, speed: 0, pierce: 0 };
+    }
+    updateCooldown() { if(this.cooldown > 0) this.cooldown--; }
+    updateBuffs() { 
+        if(this.buffs.shield > 0) this.buffs.shield--; 
+        if(this.buffs.super > 0) this.buffs.super--; 
+        if(this.buffs.speed > 0) this.buffs.speed--;
+        if(this.buffs.pierce > 0) this.buffs.pierce--;
+    }
+    applyBuff(type) {
+        if(type === ITEMS.LIFE) this.lives++;
+        if(type === ITEMS.SHIELD) this.buffs.shield = 600;
+        if(type === ITEMS.SUPER) this.buffs.super = 600;
+        if(type === ITEMS.SPEED) this.buffs.speed = 600;
+        if(type === ITEMS.PIERCING) this.buffs.pierce = 600;
+    }
+    hit() {
+        this.lives--;
+        if (this.lives <= 0) this.active = false;
+        else { this.x = this.spawnX; this.y = this.spawnY; this.buffs.shield = 180; }
+    }
+    fire(bullets) {
+        if (this.cooldown > 0) return;
+        const hasSuper = this.buffs.super > 0;
+        const hasPierce = this.buffs.pierce > 0;
+        let speed = (hasSuper || hasPierce) ? 8 : 6;
+        bullets.push({
+            x: this.x+15, y: this.y+15, dir: this.dir, team: this.team, ownerId: this.id,
+            speed: speed, isSuper: hasSuper, isPiercing: hasPierce,
+            update: function(){
+                if(this.dir===DIR.UP)this.y-=this.speed; if(this.dir===DIR.DOWN)this.y+=this.speed;
+                if(this.dir===DIR.LEFT)this.x-=this.speed; if(this.dir===DIR.RIGHT)this.x+=this.speed;
+            }
+        });
+        this.cooldown = 30;
+    }
+    getMoveSpeed() { return (this.isPlayer?3:2) * (this.buffs.speed > 0 ? 1.5 : 1); }
+    handleInput(keys, game) {
+        let s = this.getMoveSpeed(), mx=0, my=0, m=false;
+        if (this.id === 'p1') {
+            if(keys['ArrowUp']){this.dir=DIR.UP;my=-s;m=true;} else if(keys['ArrowDown']){this.dir=DIR.DOWN;my=s;m=true;}
+            else if(keys['ArrowLeft']){this.dir=DIR.LEFT;mx=-s;m=true;} else if(keys['ArrowRight']){this.dir=DIR.RIGHT;mx=s;m=true;}
+            if(keys['Space']) this.fire(game.bullets);
+        } else if (this.id === 'p2') {
+            if(keys['KeyW']){this.dir=DIR.UP;my=-s;m=true;} else if(keys['KeyS']){this.dir=DIR.DOWN;my=s;m=true;}
+            else if(keys['KeyA']){this.dir=DIR.LEFT;mx=-s;m=true;} else if(keys['KeyD']){this.dir=DIR.RIGHT;mx=s;m=true;}
+            if(keys['KeyF']) this.fire(game.bullets);
+        }
+        if(m && game.canMove(this, this.x+mx, this.y+my)) { this.x+=mx; this.y+=my; }
+    }
+    aiUpdate(game) {
+        let s = this.getMoveSpeed();
+        if (Math.random() < 0.05) {
+            let r = Math.random();
+            if (game.currentMode === MODES.VERSUS) {
+                if (this.team === TEAM.T1) this.dir = r < 0.5 ? DIR.UP : Math.floor(r*4); 
+                else if (this.team === TEAM.T2) this.dir = r < 0.5 ? DIR.DOWN : Math.floor(r*4);
+            } else {
+                // 闯关AI：更倾向于向玩家位置移动 (简单跟踪)
+                // 这里保持随机游走，防止太难
+                this.dir = r < 0.6 ? Math.floor(r*4) : Math.floor(Math.random()*4);
+            }
+        }
+        let mx=0, my=0;
+        if(this.dir===DIR.UP)my=-s; if(this.dir===DIR.DOWN)my=s; if(this.dir===DIR.LEFT)mx=-s; if(this.dir===DIR.RIGHT)mx=s;
+        if(game.canMove(this, this.x+mx, this.y+my)){this.x+=mx;this.y+=my;} else this.dir = Math.floor(Math.random()*4);
+        if(Math.random()<0.02) this.fire(game.bullets);
+    }
+    draw(ctx) {
+        if (this.buffs.shield > 0) {
+            ctx.strokeStyle = `rgba(68,138,255,${0.5+Math.sin(Date.now()/100)*0.5})`;
+            ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(this.x+15,this.y+15,25,0,Math.PI*2); ctx.stroke();
+        }
+        let c = '#ccc';
+        if (this.id === 'p1') c = '#ffca28'; else if (this.id === 'p2') c = '#76ff03';
+        else if (this.team === TEAM.T1) c = '#ff6f00'; else if (this.team === TEAM.T2) c = '#2e7d32';
+        if (this.buffs.super > 0) c = '#ff5252';
+        ctx.fillStyle = c; ctx.fillRect(this.x, this.y, 30, 30);
+        ctx.fillStyle = '#000'; ctx.save(); ctx.translate(this.x+15, this.y+15);
+        ctx.rotate([0, Math.PI/2, Math.PI, -Math.PI/2][this.dir]); ctx.fillRect(-3, -22, 6, 22); ctx.restore();
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        if(this.dir===DIR.UP||this.dir===DIR.DOWN){ctx.fillRect(this.x,this.y,6,30);ctx.fillRect(this.x+24,this.y,6,30);}
+        else{ctx.fillRect(this.x,this.y,30,6);ctx.fillRect(this.x,this.y+24,30,6);}
+    }
+}
+
+window.game = new Game();
+</script>
+</body>
+</html>

@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>Weight Stationary 脉动阵列 (权重驻留版)</title>
+    <style>
+        :root {
+            --cell-size: 50px;
+            --gap: 20px;
+            --anim-speed: 0.5s;
+            --color-pe: #fff;
+            --color-pe-active: #fff9c4;
+            --color-input-a: #e3f2fd; /* 蓝色系 Input A */
+            --color-psum: #e8f5e9;    /* 绿色系 Partial Sum */
+            --color-w: #f3e5f5;       /* 紫色系 Weight */
+            --border-col: #444;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Times New Roman', serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f2f5;
+            padding: 20px;
+            margin: 0;
+        }
+
+        /* --- 控制面板 --- */
+        .controls {
+            margin-bottom: 20px;
+            background: white;
+            padding: 10px 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            position: sticky;
+            top: 10px;
+            z-index: 1000;
+        }
+
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(33, 150, 243, 0.3);
+        }
+        button:hover { background: #1976d2; transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        button.reset { background: #ff5252; box-shadow: 0 2px 4px rgba(255, 82, 82, 0.3); }
+        button.reset:hover { background: #d32f2f; }
+        
+        .status-display {
+            font-weight: bold;
+            font-size: 20px;
+            min-width: 140px;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            color: #333;
+            background: #eee;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+
+        /* --- 主布局 --- */
+        .main-layout {
+            display: flex;
+            flex-direction: row;
+            gap: 40px;
+            align-items: flex-start;
+            justify-content: center;
+            width: 100%;
+            max-width: 1400px;
+        }
+
+        /* --- 左侧：脉动阵列 --- */
+        .array-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .array-container {
+            position: relative;
+            width: 700px;
+            height: 700px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            overflow: hidden; 
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+        }
+
+        /* 网格层 */
+        .grid-layer {
+            display: grid;
+            grid-template-columns: repeat(4, var(--cell-size));
+            grid-template-rows: repeat(4, var(--cell-size));
+            gap: var(--gap);
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .pe {
+            width: var(--cell-size);
+            height: var(--cell-size);
+            border: 2px solid var(--border-col);
+            border-radius: 8px;
+            background: var(--color-pe);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .pe span {
+            font-size: 12px;
+            font-weight: bold;
+            color: #555;
+            z-index: 2;
+        }
+
+        .pe::before {
+            content: "W";
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            font-size: 9px;
+            color: #aaa;
+        }
+
+        .pe.active {
+            background-color: var(--color-pe-active);
+            border-color: #fbc02d;
+            transform: scale(1.15);
+            box-shadow: 0 0 15px rgba(251, 192, 45, 0.5);
+            z-index: 100;
+        }
+
+        /* 数据包通用样式 */
+        .packet {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+            border-radius: 4px;
+            border: 1px solid rgba(0,0,0,0.1);
+            background: white;
+            z-index: 20;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: transform var(--anim-speed) linear;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .packet sub { font-size: 0.7em; }
+
+        /* 输入数据 A (左 -> 右) */
+        .packet.type-a {
+            width: 40px;
+            height: 24px;
+            background: var(--color-input-a);
+            color: #0277bd;
+            border-color: #90caf9;
+        }
+
+        /* 部分和 PSum (上 -> 下) */
+        .packet.type-psum {
+            width: 54px;
+            height: 36px;
+            background: var(--color-psum);
+            color: #2e7d32;
+            border-color: #a5d6a7;
+            font-size: 10px;
+            flex-direction: column;
+            line-height: 1.1;
+        }
+        .packet.type-psum .val { font-size: 9px; color: #666; font-weight: normal;}
+
+        /* --- 右侧：结果存储 --- */
+        .result-container {
+            width: 450px;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+            height: 700px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .result-container h3 { 
+            text-align: center; 
+            margin: 0 0 20px 0; 
+            color: #333; 
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 15px;
+        }
+
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .result-cell {
+            background: #fafafa;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 5px;
+            min-height: 80px; /* 改为最小高度，允许内容撑开 */
+            height: auto;
+            font-size: 10px;
+            display: flex;
+            flex-direction: column; /* 垂直布局 */
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: #aaa;
+            transition: all 0.5s ease;
+            word-break: break-word;
+        }
+
+        .result-cell.calculating {
+            background-color: #fffde7; /* 浅黄色：计算中 */
+            border-color: #fbc02d;
+            color: #f57f17;
+            box-shadow: inset 0 0 5px rgba(251, 192, 45, 0.2);
+        }
+
+        .result-cell.filled {
+            background-color: #e8f5e9; /* 绿色：完成 */
+            border-color: #66bb6a;
+            color: #1b5e20;
+            font-weight: bold;
+            box-shadow: inset 0 0 5px rgba(0,128,0,0.1);
+        }
+
+        .legend {
+            margin-top: 15px;
+            display: flex;
+            gap: 15px;
+            font-size: 12px;
+            color: #666;
+        }
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #ccc; }
+
+        .axis-label {
+            position: absolute;
+            font-weight: bold;
+            color: #888;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <button onclick="resetSim()" class="reset">↺ Reset</button>
+        <button onclick="step(-1)">◀ Prev Step</button>
+        <button onclick="togglePlay()" id="playBtn">▶ Play</button>
+        <button onclick="step(1)">Next Step ▶</button>
+        <div class="status-display" id="stepDisplay">T = 0</div>
+    </div>
+
+    <div class="main-layout">
+        
+        <div class="array-section">
+            <div class="array-container" id="arrayContainer">
+                <div class="axis-label" style="top: 30%; left: 20px; transform: translateY(-50%);">Inputs (A) ➔</div>
+                <div class="axis-label" style="top: 20px; left: 16%; transform: translateX(-50%);">Partial Sums (C) ⤵</div>
+                <div class="axis-label" style="bottom: 20px; left: 20%; transform: translateX(-50%);">Outputs ⤵</div>
+
+                <div class="grid-layer" id="gridLayer"></div>
+                <div class="data-layer" id="dataLayer"></div>
+            </div>
+            
+            <div class="legend">
+                <div class="legend-item"><div class="dot" style="background:var(--color-input-a)"></div> Input A</div>
+                <div class="legend-item"><div class="dot" style="background:var(--color-pe)"></div> Weight (Static)</div>
+                <div class="legend-item"><div class="dot" style="background:var(--color-psum)"></div> Partial Sum</div>
+                <div class="legend-item"><div class="dot" style="background:#fffde7; border:1px solid #fbc02d"></div> Calculating</div>
+            </div>
+        </div>
+
+        <div class="result-container">
+            <h3>Result Memory (Output)</h3>
+            <div style="text-align:center; font-size:12px; color:#666; margin-bottom:10px;">
+                C<sub>i,j</sub> = Σ (A<sub>i,k</sub> · W<sub>k,j</sub>)
+            </div>
+            <div class="result-grid" id="resultGrid"></div>
+        </div>
+    </div>
+
+<script>
+    // --- 配置 ---
+    const GRID_SIZE = 4;
+    const CELL_SIZE = 50; 
+    const GAP = 20;        
+    const STEP_PX = CELL_SIZE + GAP;
+
+    // 容器尺寸
+    const CONTAINER_W = 700;
+    const CONTAINER_H = 700;
+    
+    // 网格实际占据的宽高
+    const GRID_REAL_SIZE = GRID_SIZE * CELL_SIZE + (GRID_SIZE - 1) * GAP;
+    
+    // 网格中心点
+    const GRID_CENTER_X = CONTAINER_W / 2;
+    const GRID_CENTER_Y = CONTAINER_H / 2;
+    
+    // 计算网格左上角起点的坐标 (用于定位)
+    const GRID_START_X = GRID_CENTER_X - GRID_REAL_SIZE / 2;
+    const GRID_START_Y = GRID_CENTER_Y - GRID_REAL_SIZE / 2;
+
+    // --- 状态 ---
+    let currentStep = 0;
+    let isPlaying = false;
+    let timer = null;
+    
+    // 不需要 finalResults 变量了，全部动态计算
+
+    function init() {
+        createGrid();
+        createResultGrid();
+        resetSim();
+    }
+
+    // 创建 PE 网格 (显示 W)
+    function createGrid() {
+        const grid = document.getElementById('gridLayer');
+        grid.innerHTML = '';
+        for(let r=0; r<GRID_SIZE; r++) { // Row = k (dot product dim)
+            for(let c=0; c<GRID_SIZE; c++) { // Col = j (output col)
+                let pe = document.createElement('div');
+                pe.className = 'pe';
+                pe.id = `pe-${r}-${c}`;
+                pe.innerHTML = `<span>W<sub>${r},${c}</sub></span>`;
+                grid.appendChild(pe);
+            }
+        }
+    }
+
+    // 创建右侧结果表格
+    function createResultGrid() {
+        const grid = document.getElementById('resultGrid');
+        grid.innerHTML = '';
+        for(let r=0; r<GRID_SIZE; r++) {
+            for(let c=0; c<GRID_SIZE; c++) {
+                let cell = document.createElement('div');
+                cell.className = 'result-cell';
+                cell.id = `res-cell-${r}-${c}`;
+                // 初始化内容
+                cell.innerHTML = `<div><b>C<sub>${r},${c}</sub></b><br><span style="color:#eee">Waiting...</span></div>`;
+                grid.appendChild(cell);
+            }
+        }
+    }
+
+    function resetSim() {
+        stopPlay();
+        currentStep = 0;
+        updateDisplay();
+    }
+
+    function updateDisplay() {
+        document.getElementById('stepDisplay').innerText = `T = ${currentStep}`;
+        renderPackets();
+        highlightActivePEs();
+        updateResultGrid();
+    }
+
+    // 核心渲染逻辑：移动的数据包
+    function renderPackets() {
+        const layer = document.getElementById('dataLayer');
+        layer.innerHTML = '';
+
+        // 1. 渲染输入 A (Input Activations) - 向右流动
+        for (let k = 0; k < GRID_SIZE; k++) { // Grid Row index
+            for (let i = 0; i < GRID_SIZE * 2; i++) { // Sequence index
+                let visualCol = currentStep - (i + k);
+                
+                if (visualCol > -6 && visualCol < GRID_SIZE + 2) {
+                    let el = document.createElement('div');
+                    el.className = 'packet type-a';
+                    el.innerHTML = `A<sub>${i},${k}</sub>`;
+                    
+                    let top = GRID_START_Y + k * STEP_PX + (CELL_SIZE/2) - 12; // 居中
+                    let left = GRID_START_X + visualCol * STEP_PX + 5; // 微调 X
+                    
+                    el.style.transform = `translate(${left}px, ${top}px)`;
+                    layer.appendChild(el);
+                }
+            }
+        }
+
+        // 2. 渲染部分和 PSum (Partial Sums) - 向下流动
+        for (let j = 0; j < GRID_SIZE; j++) { // Grid Col index
+            for (let i = 0; i < GRID_SIZE * 2; i++) { // Sequence index
+                let visualRow = currentStep - (i + j);
+                
+                // 数据包显示简化版信息，避免遮挡
+                if (visualRow > -6 && visualRow < GRID_SIZE + 3) {
+                    let el = document.createElement('div');
+                    el.className = 'packet type-psum';
+                    
+                    let content = generateShortPSum(i, j, visualRow);
+                    el.innerHTML = `C<sub>${i},${j}</sub><div class="val">${content}</div>`;
+                    
+                    if (visualRow >= GRID_SIZE) {
+                        el.style.opacity = 0.5; // 离开阵列变淡
+                    }
+
+                    let top = GRID_START_Y + visualRow * STEP_PX + 5;
+                    let left = GRID_START_X + j * STEP_PX - 2; 
+                    
+                    el.style.transform = `translate(${left}px, ${top}px)`;
+                    layer.appendChild(el);
+                }
+            }
+        }
+    }
+
+    // 数据包上的简略显示
+    function generateShortPSum(i, j, currentRow) {
+        if (currentRow <= 0) return "0";
+        let limit = Math.min(currentRow, GRID_SIZE);
+        if (limit <= 0) return "0";
+        if (limit === 1) return "1 term"; 
+        return limit + " terms";
+    }
+
+    // 【核心更新】更新右侧结果表格，显示详细公式
+    function updateResultGrid() {
+        for(let r=0; r<GRID_SIZE; r++) { // Result Row (Input Sequence i)
+            for(let c=0; c<GRID_SIZE; c++) { // Result Col (Grid Col j)
+                let cell = document.getElementById(`res-cell-${r}-${c}`);
+                
+                // C_{r,c} 在网格中的当前行位置
+                // 公式: visualRow = currentStep - (r + c)
+                // 意义: 当 visualRow = 0 时，C_{r,c} 到达第0行PE，开始计算第0项
+                // 当 visualRow = k (k>0) 时，表示已经**通过**了第0..k-1行，收集了k项
+                
+                let visualRow = currentStep - (r + c);
+                
+                // 计算当前已完成的项数 (0 到 GRID_SIZE)
+                // 如果 visualRow <= 0，说明还没进入或刚进入第一行还没算完
+                // 如果 visualRow >= GRID_SIZE，说明已经离开阵列
+                let completedTermsCount = Math.min(Math.max(0, visualRow), GRID_SIZE);
+                
+                if (completedTermsCount === 0) {
+                     cell.className = 'result-cell';
+                     cell.innerHTML = `<div><b>C<sub>${r},${c}</sub></b><br><span style="color:#eee">Waiting...</span></div>`;
+                } else {
+                    // 生成详细公式
+                    let terms = [];
+                    for(let k=0; k < completedTermsCount; k++) {
+                        terms.push(`A<sub>${r},${k}</sub>W<sub>${k},${c}</sub>`);
+                    }
+                    
+                    let formula = terms.join(' + ');
+                    
+                    // 判断状态
+                    if (completedTermsCount < GRID_SIZE) {
+                        // 计算中 (黄色)
+                        cell.className = 'result-cell calculating';
+                        cell.innerHTML = `<div><b>C<sub>${r},${c}</sub></b><br>${formula}</div>`;
+                    } else {
+                        // 完成 (绿色)
+                        cell.className = 'result-cell filled';
+                        cell.innerHTML = `<div><b>C<sub>${r},${c}</sub></b><br>${formula}</div>`;
+                    }
+                }
+            }
+        }
+    }
+
+    function highlightActivePEs() {
+        document.querySelectorAll('.pe').forEach(p => p.classList.remove('active'));
+        
+        for(let k=0; k<GRID_SIZE; k++) {
+            for(let j=0; j<GRID_SIZE; j++) {
+                // PE(k, j) is active if T = i + k + j for some input i
+                let i = currentStep - k - j;
+                if (i >= 0 && i < GRID_SIZE * 2) { 
+                    let pe = document.getElementById(`pe-${k}-${j}`);
+                    if(pe) pe.classList.add('active');
+                }
+            }
+        }
+    }
+
+    function step(d) {
+        let n = currentStep + d;
+        if(n < 0) n=0;
+		if(n >=10) stopPlay();
+        currentStep = n;
+        updateDisplay();
+    }
+
+    function togglePlay() {
+        if(isPlaying) {
+            isPlaying = false;
+            clearInterval(timer);
+            document.getElementById('playBtn').innerText = "▶ Play";
+        } else {
+            isPlaying = true;
+            document.getElementById('playBtn').innerText = "⏸ Pause";
+            timer = setInterval(() => {
+                step(1);
+                if(currentStep > GRID_SIZE * 3 + 2) togglePlay();
+            }, 800);
+        }
+    }
+    
+    function stopPlay() {
+        isPlaying = false;
+        clearInterval(timer);
+        document.getElementById('playBtn').innerText = "▶ Play";
+    }
+
+    init();
+</script>
+
+</body>
+</html>

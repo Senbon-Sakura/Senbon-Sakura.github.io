@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> concerto-asplos-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="concerto" class="text-2xl mt-2 font-sans">Concerto</h1>
+<h2 id="concerto_1" class="text-xl mt-2 pb-2 font-sans">Concerto：面向大规模深度学习的自动通信优化与调度</h2>
+<p class="font-serif my-1">Shenggan Cheng, Hao Wu, Ziming Liu, Shengjie Lin, Siyu Wang, Xuanlei Zhao, Lansong Diao, Chang Si, Jiangsu Du, Wei Lin, Yang You<br/>
+NUS, GMU, Georgia Tech, Alibaba Group, Sun Yat-sen University<br/>
+ASPLOS 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-04-28</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: distributed training 里，collective communication 常常裸露在 critical path；现有优化大多绑定某一种 parallelism。</li>
+<li class="ml-8"><strong>方法</strong>: Concerto 用 <strong>RCPSP/ILP scheduling + auto-decomposition</strong>，把 communication optimization 变成 compiler problem。</li>
+<li class="ml-8"><strong>结果</strong>: 相比 <code>Megatron-LM / JAX-XLA / DeepSpeed / Alpa</code>，最高达到 <strong><code>19.0% / 34% / 42.9% / 22.7%</code></strong> 提速。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">通信为什么还是慢</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Cheng_-_2025_-_Concerto_Automatic_Communication_Optimization_and_Scheduling_for_Large-Scale_Deep_Learning_images/_page_2_Figure_5.jpeg" width="800" style="max-width: 92%; max-height: 380px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">不同 parallelism 都会引入 collective communication，只是位置不同: <code>DP</code> 有 gradient sync，<code>TP</code> 有 forward/backward all-reduce，<code>ZeRO</code> 有 gather/scatter。</li>
+<li class="ml-8">论文要解决的不是“某一个 all-reduce 太慢”，而是 <strong>整个训练图里的 communication 该怎么自动与 computation overlap</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="overlap" class="text-2xl mt-2 font-sans">手工 overlap 不够</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Cheng_-_2025_-_Concerto_Automatic_Communication_Optimization_and_Scheduling_for_Large-Scale_Deep_Learning_images/_page_2_Figure_11.jpeg" width="720" style="max-width: 92%; max-height: 270px; object-fit: contain;"/></p>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Cheng_-_2025_-_Concerto_Automatic_Communication_Optimization_and_Scheduling_for_Large-Scale_Deep_Learning_images/_page_3_Figure_3.jpeg" width="720" style="max-width: 92%; max-height: 190px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Figure 2</code> 说明 bucket size 没有通用最优点，不同模型最优设置差异明显。</li>
+<li class="ml-8"><code>Figure 3</code> 说明只按 program order 发通信会错过 overlap 机会；真正的问题是 <strong>operator order + communication granularity</strong> 都要调。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Observation 1</strong>: 对 <code>asynchronous communication</code>，核心是<strong>重排 launch 次序</strong>，尽量把 communication 塞进 compute 空隙。</li>
+<li class="ml-8"><strong>Observation 2</strong>: 对 <code>synchronous communication</code>，仅靠调度不够，必须<strong>主动拆分上下文计算</strong>，制造新的 overlap 窗口。</li>
+<li class="ml-8">所以 Concerto 不是只做 scheduler，也不是只做 decomposition，而是把二者放进同一个 compiler pipeline。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">系统全景</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Cheng_-_2025_-_Concerto_Automatic_Communication_Optimization_and_Scheduling_for_Large-Scale_Deep_Learning_images/_page_3_Figure_9.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">输入是 <code>torch.fx</code> graph，输出是一个被重新排序、必要时被分解过的 <code>ConcertoIR</code>。</li>
+<li class="ml-8">两个核心 pass:
+  <code>auto-decomposition</code> 找并拆 <code>critical communication</code>；<code>scheduling</code> 负责重排顺序并顺带做 fusion。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">调度建模</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">目标可以直接写成: <code>min makespan</code>，同时满足 <strong>dependency</strong> 与 <strong>resource</strong> 约束。</li>
+<li class="ml-8">每个 operator 是一个 task，资源只分 <code>computation</code> 与 <code>communication</code>。</li>
+<li class="ml-8">重点是把 overlap 从 heuristic 变成 solver 可求的 optimization problem。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ilp" class="text-2xl mt-2 font-sans">怎么让 ILP 可解</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Cheng_-_2025_-_Concerto_Automatic_Communication_Optimization_and_Scheduling_for_Large-Scale_Deep_Learning_images/_page_5_Picture_2.jpeg" width="800" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">全图 RCPSP 是 <code>NP-hard</code>，直接在上万节点图上解 ILP 不现实。</li>
+<li class="ml-8">Concerto 用 <strong>odd-even scheduling</strong>: 先把当前顺序切成 blocks，局部求优；再整体平移半个 block，继续迭代。</li>
+<li class="ml-8">这样把一次求解复杂度压到近似 <code>O(k t_b n / b)</code>，在“解得动”与“接近最优”之间做工程折中。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1" class="text-2xl mt-2 font-sans">机制1：自动拆分</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Cheng_-_2025_-_Concerto_Automatic_Communication_Optimization_and_Scheduling_for_Large-Scale_Deep_Learning_images/_page_5_Figure_13.jpeg" width="820" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">如果独立节点可提供的 overlap 时间仍小于某个通信算子的通信时间，它就是 <code>critical communication</code>。</li>
+<li class="ml-8">Concerto 沿张量维度向前/向后搜索 decomposition context，把一个“大而同步”的通信拆成多个能穿插 compute 的小块。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2" class="text-2xl mt-2 font-sans">机制2：怎么选拆法</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">选择规则可以概括成: <code>cost = max(uncovered-comm, split-overhead, 0)</code>。</li>
+<li class="ml-8"><code>cost</code> 同时衡量 <strong>未遮蔽通信</strong> 与 <strong>拆分开销</strong>。</li>
+<li class="ml-8">slowdown 系数取 <strong><code>\alpha = 1.2</code></strong>，来自 <code>18.2% / 21.9% / 23.8%</code> 的实测退化。</li>
+<li class="ml-8">若 TFLOP/s 掉太多或 HBM traffic 涨太多，solver 会直接选择“不拆”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">一次训练迭代怎么走</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>train_step -&gt; torch.fx -&gt; ConcertoIR</code>，并插入 parallel method 对应的 communication ops。</li>
+<li class="ml-8">profiling 得到各 operator 的 <code>T_i</code>，auto-decomposition 为关键同步通信生成候选策略。</li>
+<li class="ml-8">scheduler 求更优 topological order，并把可交换且同类型的 communication 做 fusion。</li>
+<li class="ml-8">runtime 只做双 stream 执行与依赖收尾: <code>comp</code> 进默认 stream，<code>comm</code> 进通信 stream。</li>
+<li class="ml-8">本质收益是把 <strong>写死在框架里的 overlap</strong> 变成 <strong>编译期自动发现的 overlap</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">实验怎么做</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>硬件</strong>: <code>4 nodes / 32x A800-80GB</code>，单节点 <code>8 GPU + NVLink 400 GB/s</code>，跨节点带宽 <strong><code>800 Gbps</code></strong>。</li>
+<li class="ml-8"><strong>软件</strong>: <code>CUDA 12.0</code>, <code>PyTorch 2.1.2</code>, <code>NCCL 2.18.6</code>。</li>
+<li class="ml-8"><strong>模型</strong>: <code>GPT</code>, <code>ViT</code>, <code>Evoformer</code>, <code>WideResNet</code>。</li>
+<li class="ml-8"><strong>并行方式</strong>: <code>PTD</code>, <code>ZeRO-2/3</code>, <code>DAP</code>, <code>automatic parallelism</code>。</li>
+<li class="ml-8"><strong>基线</strong>: <code>Megatron-LM v3.0</code>, <code>JAX/XLA 0.4.30</code>, <code>DeepSpeed 0.12.4</code>, <code>Alpa 0.2.3</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ptd-jaxxla" class="text-2xl mt-2 font-sans">PTD 与 JAX/XLA</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Cheng_-_2025_-_Concerto_Automatic_Communication_Optimization_and_Scheduling_for_Large-Scale_Deep_Learning_images/_page_9_Figure_2.jpeg" width="800" style="max-width: 92%; max-height: 320px; object-fit: contain;"/></p>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Cheng_-_2025_-_Concerto_Automatic_Communication_Optimization_and_Scheduling_for_Large-Scale_Deep_Learning_images/_page_10_Figure_4.jpeg" width="800" style="max-width: 92%; max-height: 210px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 <code>Megatron-LM</code>，Concerto 在 GPT 上 <strong>最高 <code>+19.0%</code>，平均 <code>+3.5%</code></strong>；在 NVLink 很强时增益变小，因为 baseline 已经高度手工优化。</li>
+<li class="ml-8">对 <code>JAX/XLA</code>，Concerto <strong>无 NVLink 最高 <code>+34%</code>，有 NVLink 最高 <code>+13.4%</code></strong>；说明固定 heuristic 与固定 decomposition 对硬件变化不够鲁棒。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="zero-dap-alpa" class="text-2xl mt-2 font-sans">ZeRO / DAP / Alpa</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">Baseline</th>
+<th style="text-align: center;">Concerto 提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">ZeRO-2</td>
+<td style="text-align: left;">DeepSpeed</td>
+<td style="text-align: center;"><strong>最高 <code>42.9%</code>，平均 <code>19.1%</code></strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">ZeRO-3</td>
+<td style="text-align: left;">DeepSpeed</td>
+<td style="text-align: center;"><strong>最高 <code>33.2%</code>，平均 <code>15.1%</code></strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">DAP</td>
+<td style="text-align: left;">FastFold-style impl</td>
+<td style="text-align: center;"><strong>平均 <code>12.5% / 15.6%</code></strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">Auto-parallel</td>
+<td style="text-align: left;">Alpa</td>
+<td style="text-align: center;"><strong>最高 <code>22.7%</code>，平均 <code>11.1%</code></strong></td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">ZeRO 场景收益最大，因为 compile-time scheduling 和 fusion 能显著减少保守同步。</li>
+<li class="ml-8">DAP 与 auto-parallel 更重要的意义是: <strong>Concerto 并不依赖某一个固定 parallelism 语义</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">消融说明什么</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Case</th>
+<th style="text-align: center;">Baseline</th>
+<th style="text-align: center;">Concerto(S)</th>
+<th style="text-align: center;">Concerto(S+AD)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>(1,16,1)</code> NVLink FP16</td>
+<td style="text-align: center;">0.974</td>
+<td style="text-align: center;">0.860</td>
+<td style="text-align: center;"><strong>0.817</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>(1,8,2)</code> no-NVLink FP32</td>
+<td style="text-align: center;">6.566</td>
+<td style="text-align: center;">6.295</td>
+<td style="text-align: center;"><strong>5.616</strong></td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">GPU 数</th>
+<th style="text-align: center;">ZeRO-3 FP16 fusion 前</th>
+<th style="text-align: center;">fusion 后</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">8</td>
+<td style="text-align: center;">0.517</td>
+<td style="text-align: center;"><strong>0.505</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">16</td>
+<td style="text-align: center;">0.531</td>
+<td style="text-align: center;"><strong>0.504</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">32</td>
+<td style="text-align: center;">0.614</td>
+<td style="text-align: center;"><strong>0.468</strong></td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Scheduling</code> 已经能带来稳定收益，但 <code>auto-decomposition</code> 在通信更重的场景还能继续放大。</li>
+<li class="ml-8">communication fusion 不是配角；32 GPU FP16 里单靠 fusion 就能带来约 <strong><code>23.8%</code></strong> 额外改善。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">系统代价</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Cheng_-_2025_-_Concerto_Automatic_Communication_Optimization_and_Scheduling_for_Large-Scale_Deep_Learning_images/_page_12_Figure_8.jpeg" width="760" style="max-width: 92%; max-height: 320px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">编译分三步: <code>profiling + auto-decomposition + scheduling</code>。</li>
+<li class="ml-8">profiling 典型几十秒，auto-decomposition 通常 <strong><code>&lt; 1s</code></strong>，odd-even scheduling 每轮约 <strong><code>2s-30s</code></strong>。</li>
+<li class="ml-8">它更像 <strong>compile-time optimizer</strong>；若 workload 或 batch size 高频变化，重新求解成本会开始显著。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>贡献1</strong>: 把 communication optimization 从“平行框架里的手工技巧”提升成了 <strong>compiler abstraction</strong>。</li>
+<li class="ml-8"><strong>贡献2</strong>: 用 <code>RCPSP + odd-even scheduling + auto-decomposition</code> 扩大了可搜索的 overlap 空间。</li>
+<li class="ml-8"><strong>贡献3</strong>: 在 <code>PTD / ZeRO / DAP / auto-parallel</code> 上都拿到可观收益，证明设计有跨范式泛化能力。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>最强点</strong>: 论文抓住的是“优化空间怎么表示”这个更本质的问题，而不是再发明一个更快 collective primitive。</li>
+<li class="ml-8"><strong>脆弱假设</strong>: 两类资源建模过于粗糙，<code>intra-node</code> 与 <code>inter-node</code> 通信没有被显式区分；作者自己也承认这限制了最优性。</li>
+<li class="ml-8"><strong>缺失实验</strong>: 没有覆盖更多真实生产网络扰动、多 batch size 动态变化、以及 cost estimation error 对求解结果的敏感性。</li>
+<li class="ml-8"><strong>后续方向</strong>: 应把 scheduling 与 decomposition 做联合优化，再逐步引入 performance model，减少逐策略 profiling 的编译成本。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

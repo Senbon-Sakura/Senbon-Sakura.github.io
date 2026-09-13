@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> dorado-isca-2026 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <!-- Markdown plugin removed: slides are pre-rendered HTML, not runtime Markdown -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="dorado-cache-coherence-for-1000-cores" class="text-2xl mt-2 font-sans">Dorado: Cache Coherence for 1,000+ Cores</h1>
+<h2 id="dorado" class="text-xl mt-2 pb-2 font-sans">Dorado：面向千核处理器的层次化缓存一致性协议</h2>
+<p class="font-serif my-1"><strong>Authors</strong>: Jovan Stojkovic, Abraham Farrell, Gerasimos Gerogiannis, Zhangxiaowen Gong*, Christopher J. Hughes*, Josep Torrellas
+<strong>Affiliation</strong>: UIUC, *Intel Labs
+<strong>Venue</strong>: ISCA 2026
+<strong>Presenter</strong>: Zongwu Wang | 2026-07-03</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">
+<p class="font-serif my-1"><strong>Bottleneck</strong>: 1000+ 核一致性协议的三重困境——远端 home 访问的高延迟 + 广播 invalidate 的高流量 + 全位向量的高存储</p>
+</li>
+<li class="ml-8">
+<p class="font-serif my-1"><strong>Core Idea</strong>: 三项正交技术协同——TLH（本地化事务）、Dynamic Apportioning（动态空间竞争）、SetOverflow（per-set 溢出），首次同时改善延迟、流量和存储</p>
+</li>
+<li class="ml-8">
+<p class="font-serif my-1"><strong>Headline Result</strong>: 相比等面积 <code>Dir₂B</code> 平均加速 <strong>1.36×</strong>，load 延迟 −46.1%，以 <strong>24 bits/entry</strong>（vs 66 bits）实现与 full bit vector 差距 &lt;1%</p>
+</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="backgroundsnoop-vs-directory-coherence" class="text-2xl mt-2 font-sans">Background：Snoop vs Directory Coherence</h1>
+<iframe src="./diagrams/coherence_comparison.html" width="100%" height="520" style="border:none; overflow:hidden; display:block; flex-shrink:0; min-height:520px;"></iframe></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="snoop-based-coherence" class="text-2xl mt-2 font-sans">Snoop-Based Coherence：延迟与开销</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>工作原理</strong>：所有核心共享广播总线，每个 cache controller <strong>侦听</strong> 所有事务，维护本地 MESI 状态</li>
+<li class="ml-8"><strong>延迟</strong>：Requester → Bus Arbitrate → Broadcast → All Snoop → Response。仲裁 O(1)，但<strong>串行化</strong>所有请求——同时仅一个事务占用总线</li>
+<li class="ml-8"><strong>流量</strong>：每次广播到<strong>所有 N 核</strong>，O(N) 流量，即使仅 1 个 sharer</li>
+<li class="ml-8"><strong>存储</strong>：无目录——每核仅需 ~2 bits/line（MESI），无额外开销</li>
+<li class="ml-8"><strong>上限</strong>：总线带宽随核数下降，电气负载 + 仲裁延迟 → 实际限制 <strong>8–16 核</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="directory-based-coherence" class="text-2xl mt-2 font-sans">Directory-Based Coherence：延迟与开销</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>工作原理</strong>：分布式目录追踪每 line 的<strong>共享者集合</strong>。事务 pt-to-pt，不走广播，通过 NoC 路由</li>
+<li class="ml-8"><strong>延迟</strong>：Requester → NoC → <strong>Home Dir Lookup</strong> → Fwd to Sharers → Response。Home 在远端 cluster 时 cross-cluster RT ≥ <strong>60 cycles</strong> (1024-core mesh)</li>
+<li class="ml-8"><strong>流量</strong>：pt-to-pt O(k)，仅发 invalidate 给实际共享者；但 limited-pointer 溢出时退化为广播</li>
+<li class="ml-8"><strong>存储</strong>：精确追踪 O(N²)——full bit vector = <strong>66 bits/entry</strong> for 1024 cores</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="problemtriple-trade-off-at-1000-cores" class="text-2xl mt-2 font-sans">Problem：Triple Trade-off at 1000+ Cores</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>延迟墙</strong>：远端 home 访问需 cross-cluster RT（≥60c），一次 read miss 可能 3 次穿越 → ~198 cycles</li>
+<li class="ml-8"><strong>流量墙</strong>：Limited-pointer 溢出设 Broadcast 位 → 写入时广播到所有核心，浪费带宽 + 触发所有 tag lookup</li>
+<li class="ml-8"><strong>存储墙</strong>：Full bit vector = 66 bits/entry；6MB/core LLC 下目录占 ~10%+ 面积，不可接受</li>
+<li class="ml-8"><strong>关键矛盾</strong>：已有技术（Bloom Filter, Cuckoo, Hierarchical, Pool Dir...）最多改善 <strong>2/3 维度而牺牲第三个</strong>——Dorado 需打破此 triple trade-off</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="key-observations-three-design-pillars" class="text-2xl mt-2 font-sans">Key Observations (→ Three Design Pillars)</h1>
+<p class="font-serif my-1"><strong>Obs 1 — 91% 远端 load miss 可本地化 (→ TLH)</strong>
+- 32-core cluster 下，绝大多数远端 home line 可由本地核心提供（Fig.3）。大量 line 是 read-mostly + 多线程共享</p>
+<p class="font-serif my-1"><strong>Obs 2 — Workload 差异巨大 (→ Dynamic Apportioning)</strong>
+- Redis 以 remote 为主，FaaSFunc 以 local 为主（Fig.4）。固定 local/remote 比例必然次优</p>
+<p class="font-serif my-1"><strong>Obs 3 — 多共享者稀有但关键 (→ SetOverflow)</strong>
+- 多数 line 只有 ≤2 sharer，少数被数十核共享。需按需溢出，不为少数犒赏全体</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="existing-work" class="text-2xl mt-2 font-sans">Existing Work：技术全景</h1>
+<iframe src="./diagrams/existing_work_taxonomy.html" width="100%" height="500" style="border:none; overflow:hidden; display:block; flex-shrink:0; min-height:500px;"></iframe></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="directory-protocol-evolution" class="text-2xl mt-2 font-sans">Directory Protocol Evolution</h1>
+<iframe src="./diagrams/directory_evolution.html" width="100%" height="520" style="border:none; overflow:hidden; display:block; flex-shrink:0; min-height:520px;"></iframe></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="doradohigh-level-architecture" class="text-2xl mt-2 font-sans">Dorado：High-Level Architecture</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-07-03/506501a514_images/_page_3_Picture_11.jpeg" width="820" style="max-width:92%; max-height:460px; object-fit:contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>32 clusters × 32 cores = 1024 cores</strong>，双级 2D mesh NoC，每 core 配 directory-LLC slice（TD + ED）</li>
+<li class="ml-8">物理地址哈希确定 <strong>Global home</strong>（串行化点）；远端 cluster 访问时按需创建 <strong>Temporary home</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="mechanism-1two-level-homes-tlh" class="text-2xl mt-2 font-sans">Mechanism 1：Two-Level Homes (TLH)</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-07-03/506501a514_images/_page_0_Figure_11.jpeg" width="820" style="max-width:92%; max-height:420px; object-fit:contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>解耦正确性与性能</strong>：Global home = 唯一串行化点；Temporary home = 分布式本地缓存</li>
+<li class="ml-8"><strong>三种指针</strong>：LLptr（本地核 ID）、LRptr（远端 cluster ID，1 ptr = 32 cores）、RLptr（Temp home 中本地核 ID）</li>
+<li class="ml-8"><strong>MS 状态</strong>：dirty remote line 多核读取时不用写回 Global home → 进一步减少远端流量</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tlh" class="text-2xl mt-2 font-sans">TLH：事务延迟分析</h1>
+<iframe src="./diagrams/latency_analysis.html" width="100%" height="500" style="border:none; overflow:hidden; display:block; flex-shrink:0; min-height:500px;"></iframe></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="mechanism-2dynamic-apportioning" class="text-2xl mt-2 font-sans">Mechanism 2：Dynamic Apportioning</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-07-03/506501a514_images/_page_4_Figure_11.jpeg" width="820" style="max-width:92%; max-height:430px; object-fit:contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>问题</strong>：TLH 引入 3 种指针 + local/remote 数据 + TD/ED——静态分区顾此失彼（Redis vs FaaSFunc）</li>
+<li class="ml-8"><strong>方案</strong>：所有类型共享同一硬件，<strong>动态竞争</strong>空间，workload 自适应</li>
+<li class="ml-8"><strong>代价</strong>：指针加 1 bit type 标记（6b vs 5b），完全消除静态划分浪费</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="mechanism-3setoverflow" class="text-2xl mt-2 font-sans">Mechanism 3：SetOverflow</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-07-03/506501a514_images/_page_7_Figure_7.jpeg" width="820" style="max-width:92%; max-height:430px; object-fit:contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>设计</strong>：Per-set PointerSpace (12 共享指针) + OwnerWay (T¹=6, T²=2) 记录归属</li>
+<li class="ml-8"><strong>溢出流程</strong>：way 内 2 ptr 用尽 → O=1 → 从 PointerSpace 申请 → 用尽则 B=1 (广播)</li>
+<li class="ml-8">32cl_32co 下仅 <strong>2%</strong> set 溢出；写操作收集需额外 <strong>3 cycles</strong>（非关键路径）</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="hardware-overhead" class="text-2xl mt-2 font-sans">Hardware Overhead</h1>
+<iframe src="./diagrams/storage_overhead.html" width="100%" height="520" style="border:none; overflow:hidden; display:block; flex-shrink:0; min-height:520px;"></iframe></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="verificationtla-model-checking" class="text-2xl mt-2 font-sans">Verification：TLA+ Model Checking</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>模型</strong>：4 clusters × 4 cores × 4 lines — 覆盖数千种 interleaving；含 M/E/S/I/MS 五状态</li>
+<li class="ml-8"><strong>验证 5 属性</strong>：SWMR 语义 · Dirty-bit consistency · Home consistency · Sharer soundness · Read correctness</li>
+<li class="ml-8"><strong>结果</strong>：TLC 报告 <strong>无死锁、无活锁、无 invariant violation</strong></li>
+<li class="ml-8"><strong>核心不变量</strong>：任何修改 Global home 的事务<strong>必须先锁 Global home</strong>，才能锁 Temp home</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="methodology" class="text-2xl mt-2 font-sans">Methodology</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Simulator</strong>: SST + DRAMSim2，Pin trace，Ariel OoO (6-issue, 3GHz, TSO, 352-ROB)</li>
+<li class="ml-8"><strong>Cache</strong>: L1I/D 64/32KB → L2 2MB/core → L3 6MB/core, 2D mesh NoC (5c/hop intra, 60c cross-cluster)</li>
+<li class="ml-8"><strong>Workloads</strong> (13 apps, 1024 threads): Graph (BFS/DFS/CC/PR), Redis (R/W), FaaS (FuncBench), ML Serving (DLRM/CNN), µService (SocNet), MUMmer, MapRed</li>
+<li class="ml-8"><strong>Baselines</strong> (all ≈ same directory storage): Dir₂B, TLH-Dir₄B, TLH-Dir₃B-Dyn, UpperBound (66b), SCD, WayC, Hier2/4/16</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="performancemain-results" class="text-2xl mt-2 font-sans">Performance：Main Results</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-07-03/506501a514_images/_page_10_Figure_0.jpeg" width="820" style="max-width:92%; max-height:470px; object-fit:contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">三层递进：Dir₂B (1.00×) → TLH-Dir₄B (1.17×) → TLH-Dir₃B-Dyn (1.24×) → <strong>Dorado (1.36×)</strong></li>
+<li class="ml-8">Dorado vs UpperBound (full bit vector, 2.75× 存储)：性能差距 <strong>&lt; 1%</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="performancewhy-it-works" class="text-2xl mt-2 font-sans">Performance：Why It Works</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric</th>
+<th style="text-align: left;">Dir₂B → Dorado</th>
+<th style="text-align: left;">Mechanism</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Remote L2-missing loads</strong></td>
+<td style="text-align: left;"><strong>−89.6%</strong></td>
+<td style="text-align: left;">TLH: Temp home 截获</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Invalidation messages</strong></td>
+<td style="text-align: left;"><strong>−39%</strong></td>
+<td style="text-align: left;">SetOverflow + LRptr (1=32 cores)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Avg data load latency</strong></td>
+<td style="text-align: left;"><strong>−46.1%</strong></td>
+<td style="text-align: left;">TLH 消除 cross-cluster RT</td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.14：Dorado 下绝大多数请求在 Local-L2 + Cluster-L3 完成</li>
+<li class="ml-8">加权延迟：first miss 138c (9%) + subsequent 35c (91%) ≈ <strong>44c</strong> vs Dir₂B 198c</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="comparisonmany-sharer-designs" class="text-2xl mt-2 font-sans">Comparison：Many-Sharer Designs</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-07-03/506501a514_images/_page_10_Figure_9.jpeg" width="820" style="max-width:92%; max-height:440px; object-fit:contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">等存储下：<strong>SetOverflow (+10.5%) &gt; WayC (+5.8%) &gt; SCD (+3.1%)</strong>（vs TLH-Dir₃B-Dyn）</li>
+<li class="ml-8">SCD 在 set-assoc cache 上冲突多；WayC 需空闲 way；SetOverflow 无此限制</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="comparisonhierarchical-coherence" class="text-2xl mt-2 font-sans">Comparison：Hierarchical Coherence</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Hier4</strong> (8MB extra cache/core) = 1.20× vs <strong>Dorado</strong> (6MB) = <strong>1.36×</strong> — 更少 cache，更高性能</li>
+<li class="ml-8">层次化 write 延迟：上溯覆盖层 → 逐级下发 invalidate → 多层串行；Dorado flat-TLH 直接到串行化点</li>
+<li class="ml-8">SocNet (cross-cluster R/W sharing)：Hier4 L1 load = 72c，Dorado = <strong>57c</strong>（−21%）</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="sensitivityconsistency-scalability" class="text-2xl mt-2 font-sans">Sensitivity：Consistency &amp; Scalability</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>TSO → RC</strong>：Dorado 1.36× → <strong>1.38×</strong>；vs Hier4 从 1.13× → 1.11× (RC 对写延迟高的 Hier4 补偿更多)</li>
+<li class="ml-8"><strong>SetOverflow 扩展</strong>：64-core cluster 仅 3% set 溢出 → 12-pointer PointerSpace 足够</li>
+<li class="ml-8"><strong>RTL 面积/功耗</strong>：+0.44% area, +2.3% leakage, +1.8% dynamic → 工业可接受</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="conclusion" class="text-2xl mt-2 font-sans">Conclusion</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>TLH</strong>：Global home 串行化 + Temporary home 本地缓存 → −89.6% remote load miss</li>
+<li class="ml-8"><strong>Dynamic Apportioning</strong>：所有类型动态竞争同一硬件 → workload 自适应，消除静态划分浪费</li>
+<li class="ml-8"><strong>SetOverflow</strong>：per-set 精细溢出 → 多共享者精确追踪，优于 SCD/WayC 2-3×</li>
+<li class="ml-8"><strong>综合</strong>：1.36× 加速 + 46.1% 延迟降低 + 2.75× 存储节省 vs full bit vector，硬件代价可忽略</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="critiquepros-cons" class="text-2xl mt-2 font-sans">Critique：Pros &amp; Cons</h1>
+<h3 id="_1">✅ 优点</h3>
+<ul class="list-disc font-serif">
+<li class="ml-8">三层技术正交互补，各攻一个明确定义的瓶颈</li>
+<li class="ml-8">TLA+ 验证 + RTL 综合 → 正确性到物理实现的完整证据链</li>
+<li class="ml-8">Baseline 全面公平（等存储），Table I 分类堪称模板</li>
+</ul>
+<h3 id="_2">❌ 局限</h3>
+<ul class="list-disc font-serif">
+<li class="ml-8">Temp home 多副本空间膨胀上界未量化；TLA+ 仅 4×4×4 配置</li>
+<li class="ml-8">无全系统模拟，OS activity (page fault, TLB shootdown) 影响被忽略</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="future-work" class="text-2xl mt-2 font-sans">Future Work</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>CXL Multi-Socket</strong>：TLH 思想扩展到 CXL 场景——socket 内 = cluster，socket 间 = TLH</li>
+<li class="ml-8"><strong>ML-Guided Partition</strong>：硬件计数器监测 sharing pattern → 预测 phase transition → 预调 Dynamic Apportioning 策略</li>
+<li class="ml-8"><strong>Larger-Scale TLA+</strong>：使用 stateless model checking 或 symbolic execution 覆盖 ≥16-core 配置</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>
