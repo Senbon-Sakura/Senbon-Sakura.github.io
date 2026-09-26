@@ -1,0 +1,1193 @@
+<!--
+ * @Author: Wang Zongwu
+ * @Date: 2026-02-26 15:08:52
+ * @LastEditTime: 2026-02-26 15:14:58
+ * @LastEditors: Wang Zongwu
+ * @Description: forked from https://github.com/ANIL-RONGALA/DDR4-Memory-Architecture
+ * @FilePath: /Blogs/source/htmls/ddr4.html
+ * @Mail: wangzongwu@sjtu.edu.cn
+ * Please ask for permission before quote the code.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    
+    
+    <meta charset="UTF-8">
+    <title>DDR4 Memory Architecture</title>
+    <meta name="google-site-verification" content="hnUaBRejDDvPREwNjwr2uc0DtBwjQVMN7oUSfalZvMI" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="An interactive, seven-level visualization detailing the structure of DDR4 memory, from the Channel down to the 1T1C DRAM Cell.">
+    <meta name="keywords" content="DDR4, DRAM, memory hierarchy, computer architecture, 1T1C, memory channel, row buffer, visualization">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1042 50%, #2d1b4e 100%);
+            color: #fff;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        h1 {
+            text-align: center;
+            font-size: 3em;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #00f5ff, #0080ff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+        
+        @keyframes glow {
+            from { filter: drop-shadow(0 0 10px rgba(0, 245, 255, 0.5)); }
+            to { filter: drop-shadow(0 0 20px rgba(255, 0, 255, 0.8)); }
+        }
+        
+        .subtitle {
+            text-align: center;
+            font-size: 1.2em;
+            margin-bottom: 40px;
+            color: #00f5ff;
+            opacity: 0.9;
+        }
+        
+        .breadcrumb {
+            text-align: center;
+            padding: 15px;
+            background: rgba(0, 245, 255, 0.1);
+            border-radius: 10px;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+            color: #00f5ff;
+        }
+        
+        .back-button {
+            display: inline-block;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #ff00ff, #0080ff);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
+            margin: 20px auto;
+            display: block;
+            transition: all 0.3s ease;
+            font-weight: bold;
+        }
+        
+        .back-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 10px 30px rgba(255, 0, 255, 0.5);
+        }
+        
+        .level-container {
+            animation: fadeIn 0.5s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        
+        .description-panel {
+            background: linear-gradient(135deg, rgba(0, 245, 255, 0.1), rgba(255, 0, 255, 0.1));
+            border: 2px solid rgba(0, 245, 255, 0.3);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .description-title {
+            font-size: 2em;
+            color: #00f5ff;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .description-text {
+            font-size: 1.1em;
+            line-height: 1.8;
+            color: #ccc;
+            margin-bottom: 15px;
+        }
+        
+        .tech-specs {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .spec-item {
+            background: rgba(0, 128, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #00f5ff;
+        }
+        
+        .spec-label {
+            font-size: 0.9em;
+            color: #999;
+            margin-bottom: 5px;
+        }
+        
+        .spec-value {
+            font-size: 1.3em;
+            color: #00f5ff;
+            font-weight: bold;
+        }
+        
+        .items-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        .clickable-item {
+            background: linear-gradient(135deg, rgba(0, 245, 255, 0.15), rgba(255, 0, 255, 0.15));
+            border: 2px solid rgba(0, 245, 255, 0.4);
+            border-radius: 20px;
+            padding: 30px;
+            cursor: pointer;
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+            text-align: center;
+        }
+        
+        .clickable-item::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0, 245, 255, 0.2) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .clickable-item:hover::before {
+            opacity: 1;
+            animation: rotate 3s linear infinite;
+        }
+        
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .clickable-item:hover {
+            transform: scale(1.05) translateY(-10px);
+            border-color: #00f5ff;
+            box-shadow: 0 15px 50px rgba(0, 245, 255, 0.5);
+        }
+        
+        .item-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+        
+        .item-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #00f5ff;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .item-capacity {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .item-details {
+            font-size: 0.95em;
+            color: #aaa;
+            position: relative;
+            z-index: 1;
+            line-height: 1.6;
+        }
+        
+        .click-hint {
+            margin-top: 15px;
+            padding: 8px 15px;
+            background: rgba(255, 0, 255, 0.2);
+            border-radius: 20px;
+            font-size: 0.85em;
+            color: #ff00ff;
+            display: inline-block;
+        }
+        
+        .visual-grid {
+            display: grid;
+            gap: 5px;
+            margin: 30px 0;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 15px;
+        }
+        
+        .grid-cell {
+            aspect-ratio: 1;
+            background: linear-gradient(135deg, rgba(0, 245, 255, 0.3), rgba(0, 128, 255, 0.3));
+            border: 1px solid rgba(0, 245, 255, 0.5);
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .grid-cell:hover {
+            background: linear-gradient(135deg, #00f5ff, #0080ff);
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(0, 245, 255, 0.8);
+            z-index: 10;
+        }
+        
+        .grid-8 { grid-template-columns: repeat(8, 1fr); }
+        .grid-16 { grid-template-columns: repeat(16, 1fr); }
+        .grid-32 { grid-template-columns: repeat(32, 1fr); }
+        
+        .visualization-title {
+            text-align: center;
+            font-size: 1.3em;
+            color: #00f5ff;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .row-visualization {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+        }
+        
+        .row-strip {
+            height: 50px;
+            background: linear-gradient(90deg, 
+                rgba(0, 245, 255, 0.1) 0%, 
+                rgba(0, 245, 255, 0.5) 50%, 
+                rgba(0, 245, 255, 0.1) 100%);
+            border: 2px solid #00f5ff;
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .row-strip:hover {
+            transform: scaleY(1.2);
+            box-shadow: 0 0 30px rgba(0, 245, 255, 0.6);
+        }
+        
+        .row-strip::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shine 3s infinite;
+        }
+        
+        @keyframes shine {
+            to { left: 100%; }
+        }
+        
+        .column-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(15px, 1fr));
+            gap: 2px;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+        }
+        
+        .column-cell {
+            aspect-ratio: 1;
+            background: rgba(255, 0, 255, 0.3);
+            border: 1px solid rgba(255, 0, 255, 0.5);
+            border-radius: 2px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        
+        .column-cell:hover {
+            background: #ff00ff;
+            transform: scale(1.5);
+            box-shadow: 0 0 10px #ff00ff;
+            z-index: 10;
+        }
+        
+        .info-highlight {
+            background: rgba(255, 0, 255, 0.1);
+            border-left: 4px solid #ff00ff;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+        
+        .component-diagram {
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(0, 245, 255, 0.3);
+            border-radius: 20px;
+            padding: 30px;
+            margin: 40px 0;
+        }
+        
+        .diagram-title {
+            text-align: center;
+            font-size: 1.5em;
+            color: #00f5ff;
+            margin-bottom: 25px;
+            font-weight: bold;
+        }
+        
+        .diagram-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .physical-layout {
+            width: 100%;
+            max-width: 800px;
+            background: linear-gradient(135deg, rgba(0, 30, 60, 0.6), rgba(0, 15, 40, 0.6));
+            border: 3px solid #00f5ff;
+            border-radius: 15px;
+            padding: 30px;
+            position: relative;
+            box-shadow: 0 10px 40px rgba(0, 245, 255, 0.3);
+        }
+        
+        .layout-label {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #0080ff, #00f5ff);
+            padding: 5px 20px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .cross-section {
+            width: 100%;
+            max-width: 900px;
+            margin: 20px auto;
+        }
+        
+        .cross-section-container {
+            background: linear-gradient(180deg, rgba(0, 20, 40, 0.8), rgba(0, 10, 30, 0.8));
+            border: 2px solid rgba(255, 0, 255, 0.4);
+            border-radius: 15px;
+            padding: 25px;
+            position: relative;
+        }
+        
+        .layer {
+            height: 40px;
+            margin: 10px 0;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 0.95em;
+            font-weight: bold;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .layer:hover {
+            transform: translateX(10px);
+            box-shadow: 0 5px 20px rgba(0, 245, 255, 0.4);
+        }
+        
+        .dimension-line {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(0, 245, 255, 0.05);
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+        
+        .dimension-label {
+            color: #00f5ff;
+            font-weight: bold;
+        }
+        
+        .dimension-value {
+            color: #fff;
+            background: rgba(0, 245, 255, 0.2);
+            padding: 5px 15px;
+            border-radius: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DDR4 MEMORY ARCHITECTURE</h1>
+        <div class="subtitle">Interactive Deep-Dive Visualization</div>
+        
+        <div id="breadcrumb" class="breadcrumb"></div>
+        
+        <!-- Channel Level -->
+        <div id="level-channel" class="level-container">
+            <div class="description-panel">
+                <div class="description-title">
+                    <span style="font-size: 1.5em;">⚡</span>
+                    <span>Memory Channel Architecture</span>
+                </div>
+                <div class="description-text">
+                    A memory channel is the primary communication pathway between the CPU's memory controller and the RAM modules. This configuration uses a single channel with a 64-bit data bus width, allowing 8 bytes to be transferred simultaneously. Modern systems often use dual or quad-channel configurations for increased bandwidth.
+                </div>
+                <div class="info-highlight">
+                    <strong>🔍 Key Concept:</strong> The channel represents the physical and electrical connection that enables data transfer. A wider bus (more channels) means more data can move in parallel, dramatically increasing memory bandwidth.
+                </div>
+                <div class="tech-specs">
+                    <div class="spec-item">
+                        <div class="spec-label">Total Capacity</div>
+                        <div class="spec-value">16.0 GB</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Bus Width</div>
+                        <div class="spec-value">64 bits</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Transfer per Cycle</div>
+                        <div class="spec-value">8 bytes</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Connected DIMMs</div>
+                        <div class="spec-value">4 modules</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="items-grid">
+                <div class="clickable-item" onclick="showLevel('dimm')">
+                    <div class="item-icon">💾</div>
+                    <div class="item-title">MEMORY CHANNEL</div>
+                    <div class="item-capacity">16.0 GB</div>
+                    <div class="item-details">
+                        • 64-bit Data Bus<br>
+                        • 4 DIMM Slots<br>
+                        • DDR4 Interface
+                    </div>
+                    <div class="click-hint">👆 Click to explore DIMMs</div>
+                </div>
+            </div>
+            
+            <!-- Component Diagram -->
+            <div class="component-diagram">
+                <div class="diagram-title">🔌 Channel Physical Layout & Cross-Section</div>
+                <div class="diagram-content">
+                    <div class="physical-layout">
+                        <div class="layout-label">TOP VIEW - Motherboard</div>
+                        <svg viewBox="0 0 800 300" style="width: 100%;">
+                            <!-- Memory Channel Bus -->
+                            <rect x="50" y="130" width="700" height="40" fill="url(#gradient1)" stroke="#00f5ff" stroke-width="3" rx="5"/>
+                            <text x="400" y="155" fill="#fff" font-size="16" text-anchor="middle" font-weight="bold">64-BIT DATA BUS</text>
+                            
+                            <!-- DIMM Slots -->
+                            <rect x="80" y="50" width="120" height="60" fill="rgba(0,245,255,0.2)" stroke="#00f5ff" stroke-width="2" rx="5"/>
+                            <text x="140" y="85" fill="#00f5ff" font-size="14" text-anchor="middle" font-weight="bold">SLOT 0</text>
+                            
+                            <rect x="240" y="50" width="120" height="60" fill="rgba(0,245,255,0.2)" stroke="#00f5ff" stroke-width="2" rx="5"/>
+                            <text x="300" y="85" fill="#00f5ff" font-size="14" text-anchor="middle" font-weight="bold">SLOT 1</text>
+                            
+                            <rect x="400" y="50" width="120" height="60" fill="rgba(0,245,255,0.2)" stroke="#00f5ff" stroke-width="2" rx="5"/>
+                            <text x="460" y="85" fill="#00f5ff" font-size="14" text-anchor="middle" font-weight="bold">SLOT 2</text>
+                            
+                            <rect x="560" y="50" width="120" height="60" fill="rgba(0,245,255,0.2)" stroke="#00f5ff" stroke-width="2" rx="5"/>
+                            <text x="620" y="85" fill="#00f5ff" font-size="14" text-anchor="middle" font-weight="bold">SLOT 3</text>
+                            
+                            <!-- Connection Lines -->
+                            <line x1="140" y1="110" x2="140" y2="130" stroke="#00f5ff" stroke-width="2"/>
+                            <line x1="300" y1="110" x2="300" y2="130" stroke="#00f5ff" stroke-width="2"/>
+                            <line x1="460" y1="110" x2="460" y2="130" stroke="#00f5ff" stroke-width="2"/>
+                            <line x1="620" y1="110" x2="620" y2="130" stroke="#00f5ff" stroke-width="2"/>
+                            
+                            <!-- Memory Controller Connection -->
+                            <circle cx="400" cy="230" r="40" fill="rgba(255,0,255,0.3)" stroke="#ff00ff" stroke-width="3"/>
+                            <text x="400" y="235" fill="#ff00ff" font-size="12" text-anchor="middle" font-weight="bold">MEMORY</text>
+                            <text x="400" y="250" fill="#ff00ff" font-size="12" text-anchor="middle" font-weight="bold">CONTROLLER</text>
+                            
+                            <line x1="400" y1="190" x2="400" y2="170" stroke="#ff00ff" stroke-width="3" stroke-dasharray="5,5"/>
+                            
+                            <defs>
+                                <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" style="stop-color:#00f5ff;stop-opacity:0.3" />
+                                    <stop offset="50%" style="stop-color:#0080ff;stop-opacity:0.5" />
+                                    <stop offset="100%" style="stop-color:#00f5ff;stop-opacity:0.3" />
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                    </div>
+                    
+                    <div class="cross-section">
+                        <div class="cross-section-container">
+                            <div style="text-align: center; color: #ff00ff; font-weight: bold; margin-bottom: 15px; font-size: 1.2em;">SIGNAL LAYERS</div>
+                            <div class="layer" style="background: linear-gradient(90deg, rgba(0,245,255,0.3), rgba(0,128,255,0.3));">
+                                <span>DATA LINES [63:0] - 64 parallel traces</span>
+                            </div>
+                            <div class="layer" style="background: linear-gradient(90deg, rgba(255,165,0,0.3), rgba(255,140,0,0.3));">
+                                <span>ADDRESS LINES [13:0] - Row/Column address</span>
+                            </div>
+                            <div class="layer" style="background: linear-gradient(90deg, rgba(0,255,0,0.3), rgba(0,200,0,0.3));">
+                                <span>COMMAND LINES - RAS, CAS, WE signals</span>
+                            </div>
+                            <div class="layer" style="background: linear-gradient(90deg, rgba(255,0,255,0.3), rgba(200,0,255,0.3));">
+                                <span>CLOCK - Differential clock signals</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="tech-specs" style="margin-top: 20px;">
+                        <div class="dimension-line">
+                            <span class="dimension-label">Channel Width:</span>
+                            <span class="dimension-value">64 bits (8 bytes)</span>
+                        </div>
+                        <div class="dimension-line">
+                            <span class="dimension-label">Max Transfer Rate:</span>
+                            <span class="dimension-value">DDR4-2666: 21.3 GB/s</span>
+                        </div>
+                        <div class="dimension-line">
+                            <span class="dimension-label">DIMM Slots:</span>
+                            <span class="dimension-value">4 slots per channel</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- DIMM Level -->
+        <div id="level-dimm" class="level-container hidden">
+            <button class="back-button" onclick="showLevel('channel')">← Back to Channel</button>
+            
+            <div class="description-panel">
+                <div class="description-title">
+                    <span style="font-size: 1.5em;">💾</span>
+                    <span>DIMM (Dual In-line Memory Module)</span>
+                </div>
+                <div class="description-text">
+                    DIMMs are the physical circuit boards that hold memory chips. Each DIMM in this configuration contains 4 GB of memory organized into 2 ranks. The "dual in-line" refers to the pins on both sides of the module that provide separate electrical contacts. DIMMs plug into motherboard slots and can be easily upgraded or replaced.
+                </div>
+                <div class="info-highlight">
+                    <strong>🔍 Architecture:</strong> Each DIMM contains multiple memory chips arranged on a PCB. The memory controller can address each DIMM independently, and the dual-rank design allows for better density without requiring larger chips.
+                </div>
+                <div class="tech-specs">
+                    <div class="spec-item">
+                        <div class="spec-label">Capacity per DIMM</div>
+                        <div class="spec-value">4.0 GB</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Ranks per DIMM</div>
+                        <div class="spec-value">2 ranks</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Total DIMMs</div>
+                        <div class="spec-value">4 modules</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Form Factor</div>
+                        <div class="spec-value">DDR4 DIMM</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="visualization-title">4 DIMM Modules Layout</div>
+            <div class="items-grid">
+                <div class="clickable-item" onclick="showLevel('rank', 0)">
+                    <div class="item-icon">📦</div>
+                    <div class="item-title">DIMM 0</div>
+                    <div class="item-capacity">4.0 GB</div>
+                    <div class="item-details">
+                        • 2 Ranks × 2 GB<br>
+                        • 16 Memory Chips<br>
+                        • DDR4-2400/2666
+                    </div>
+                    <div class="click-hint">👆 Click to explore Ranks</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('rank', 1)">
+                    <div class="item-icon">📦</div>
+                    <div class="item-title">DIMM 1</div>
+                    <div class="item-capacity">4.0 GB</div>
+                    <div class="item-details">
+                        • 2 Ranks × 2 GB<br>
+                        • 16 Memory Chips<br>
+                        • DDR4-2400/2666
+                    </div>
+                    <div class="click-hint">👆 Click to explore Ranks</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('rank', 2)">
+                    <div class="item-icon">📦</div>
+                    <div class="item-title">DIMM 2</div>
+                    <div class="item-capacity">4.0 GB</div>
+                    <div class="item-details">
+                        • 2 Ranks × 2 GB<br>
+                        • 16 Memory Chips<br>
+                        • DDR4-2400/2666
+                    </div>
+                    <div class="click-hint">👆 Click to explore Ranks</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('rank', 3)">
+                    <div class="item-icon">📦</div>
+                    <div class="item-title">DIMM 3</div>
+                    <div class="item-capacity">4.0 GB</div>
+                    <div class="item-details">
+                        • 2 Ranks × 2 GB<br>
+                        • 16 Memory Chips<br>
+                        • DDR4-2400/2666
+                    </div>
+                    <div class="click-hint">👆 Click to explore Ranks</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Rank Level -->
+        <div id="level-rank" class="level-container hidden">
+            <button class="back-button" onclick="showLevel('dimm')">← Back to DIMMs</button>
+            
+            <div class="description-panel">
+                <div class="description-title">
+                    <span style="font-size: 1.5em;">📊</span>
+                    <span>Memory Ranks</span>
+                </div>
+                <div class="description-text">
+                    A rank is a set of memory chips that can be accessed simultaneously by the memory controller. Each rank represents a 64-bit wide data path (matching the channel width). Ranks on the same DIMM share the same data and address buses but have separate chip select signals, meaning only one rank on a DIMM can be active at a time.
+                </div>
+                <div class="info-highlight">
+                    <strong>🔍 Why Ranks Matter:</strong> Dual-rank DIMMs offer better performance than single-rank in many workloads because while one rank is being accessed, the other can be preparing for the next operation (rank interleaving). This overlapping reduces latency.
+                </div>
+                <div class="tech-specs">
+                    <div class="spec-item">
+                        <div class="spec-label">Capacity per Rank</div>
+                        <div class="spec-value">2.0 GB</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Chips per Rank</div>
+                        <div class="spec-value">8 chips</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Data Width</div>
+                        <div class="spec-value">64 bits</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Chip Capacity</div>
+                        <div class="spec-value">2 Gbit each</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="visualization-title">2 Ranks per DIMM (Side-by-Side)</div>
+            <div class="items-grid" style="grid-template-columns: repeat(2, 1fr);">
+                <div class="clickable-item" onclick="showLevel('chip', 0)">
+                    <div class="item-icon">🔲</div>
+                    <div class="item-title">RANK 0 (Front)</div>
+                    <div class="item-capacity">2.0 GB</div>
+                    <div class="item-details">
+                        • 8 Memory Chips<br>
+                        • 256 MB per chip<br>
+                        • Primary Rank<br>
+                        • 64-bit data bus
+                    </div>
+                    <div class="click-hint">👆 Click to see Chips</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('chip', 1)">
+                    <div class="item-icon">🔲</div>
+                    <div class="item-title">RANK 1 (Back)</div>
+                    <div class="item-capacity">2.0 GB</div>
+                    <div class="item-details">
+                        • 8 Memory Chips<br>
+                        • 256 MB per chip<br>
+                        • Secondary Rank<br>
+                        • 64-bit data bus
+                    </div>
+                    <div class="click-hint">👆 Click to see Chips</div>
+                </div>
+            </div>
+            
+            <div class="visual-grid grid-8" style="max-width: 600px; margin: 30px auto;">
+                <div class="grid-cell" style="background: linear-gradient(135deg, rgba(0, 245, 255, 0.4), rgba(0, 128, 255, 0.4));"></div>
+                <div class="grid-cell" style="background: linear-gradient(135deg, rgba(0, 245, 255, 0.4), rgba(0, 128, 255, 0.4));"></div>
+                <div class="grid-cell" style="background: linear-gradient(135deg, rgba(0, 245, 255, 0.4), rgba(0, 128, 255, 0.4));"></div>
+                <div class="grid-cell" style="background: linear-gradient(135deg, rgba(0, 245, 255, 0.4), rgba(0, 128, 255, 0.4));"></div>
+                <div class="grid-cell" style="background: linear-gradient(135deg, rgba(0, 245, 255, 0.4), rgba(0, 128, 255, 0.4));"></div>
+                <div class="grid-cell" style="background: linear-gradient(135deg, rgba(0, 245, 255, 0.4), rgba(0, 128, 255, 0.4));"></div>
+                <div class="grid-cell" style="background: linear-gradient(135deg, rgba(0, 245, 255, 0.4), rgba(0, 128, 255, 0.4));"></div>
+                <div class="grid-cell" style="background: linear-gradient(135deg, rgba(0, 245, 255, 0.4), rgba(0, 128, 255, 0.4));"></div>
+            </div>
+            <div style="text-align: center; color: #00f5ff; margin-top: 10px;">8 chips working together (each contributes 8 bits to the 64-bit bus)</div>
+        </div>
+        
+        <!-- Chip Level -->
+        <div id="level-chip" class="level-container hidden">
+            <button class="back-button" onclick="showLevel('rank')">← Back to Ranks</button>
+            
+            <div class="description-panel">
+                <div class="description-title">
+                    <span style="font-size: 1.5em;">🔲</span>
+                    <span>Memory Chips (DRAM ICs)</span>
+                </div>
+                <div class="description-text">
+                    Each memory chip is an integrated circuit (IC) containing the actual DRAM cells where data is stored. In this configuration, each chip has a capacity of 2 Gbit (256 MB) and contributes 8 bits to the 64-bit data bus. The chip is internally organized into 8 banks, allowing multiple memory operations to be pipelined for better performance.
+                </div>
+                <div class="info-highlight">
+                    <strong>🔍 Parallel Processing:</strong> When you read 64 bits from memory, all 8 chips work simultaneously—each chip provides 8 bits. This parallel architecture is why memory bandwidth scales with the number of chips in a rank.
+                </div>
+                <div class="tech-specs">
+                    <div class="spec-item">
+                        <div class="spec-label">Chip Capacity</div>
+                        <div class="spec-value">256 MB</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Density</div>
+                        <div class="spec-value">2 Gbit</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Banks per Chip</div>
+                        <div class="spec-value">8 banks</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Data Width</div>
+                        <div class="spec-value">8 bits</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="visualization-title">8 Memory Chips in Rank</div>
+            <div class="items-grid">
+                <div class="clickable-item" onclick="showLevel('bank', 0)">
+                    <div class="item-icon">🟦</div>
+                    <div class="item-title">CHIP 0</div>
+                    <div class="item-capacity">256 MB</div>
+                    <div class="item-details">
+                        • Bits [7:0]<br>
+                        • 8 Banks<br>
+                        • 2 Gbit density
+                    </div>
+                    <div class="click-hint">👆 Explore Banks</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('bank', 1)">
+                    <div class="item-icon">🟦</div>
+                    <div class="item-title">CHIP 1</div>
+                    <div class="item-capacity">256 MB</div>
+                    <div class="item-details">
+                        • Bits [15:8]<br>
+                        • 8 Banks<br>
+                        • 2 Gbit density
+                    </div>
+                    <div class="click-hint">👆 Explore Banks</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('bank', 2)">
+                    <div class="item-icon">🟦</div>
+                    <div class="item-title">CHIP 2</div>
+                    <div class="item-capacity">256 MB</div>
+                    <div class="item-details">
+                        • Bits [23:16]<br>
+                        • 8 Banks<br>
+                        • 2 Gbit density
+                    </div>
+                    <div class="click-hint">👆 Explore Banks</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('bank', 3)">
+                    <div class="item-icon">🟦</div>
+                    <div class="item-title">CHIP 3</div>
+                    <div class="item-capacity">256 MB</div>
+                    <div class="item-details">
+                        • Bits [31:24]<br>
+                        • 8 Banks<br>
+                        • 2 Gbit density
+                    </div>
+                    <div class="click-hint">👆 Explore Banks</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('bank', 4)">
+                    <div class="item-icon">🟦</div>
+                    <div class="item-title">CHIP 4</div>
+                    <div class="item-capacity">256 MB</div>
+                    <div class="item-details">
+                        • Bits [39:32]<br>
+                        • 8 Banks<br>
+                        • 2 Gbit density
+                    </div>
+                    <div class="click-hint">👆 Explore Banks</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('bank', 5)">
+                    <div class="item-icon">🟦</div>
+                    <div class="item-title">CHIP 5</div>
+                    <div class="item-capacity">256 MB</div>
+                    <div class="item-details">
+                        • Bits [47:40]<br>
+                        • 8 Banks<br>
+                        • 2 Gbit density
+                    </div>
+                    <div class="click-hint">👆 Explore Banks</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('bank', 6)">
+                    <div class="item-icon">🟦</div>
+                    <div class="item-title">CHIP 6</div>
+                    <div class="item-capacity">256 MB</div>
+                    <div class="item-details">
+                        • Bits [55:48]<br>
+                        • 8 Banks<br>
+                        • 2 Gbit density
+                    </div>
+                    <div class="click-hint">👆 Explore Banks</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('bank', 7)">
+                    <div class="item-icon">🟦</div>
+                    <div class="item-title">CHIP 7</div>
+                    <div class="item-capacity">256 MB</div>
+                    <div class="item-details">
+                        • Bits [63:56]<br>
+                        • 8 Banks<br>
+                        • 2 Gbit density
+                    </div>
+                    <div class="click-hint">👆 Explore Banks</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Bank Level -->
+        <div id="level-bank" class="level-container hidden">
+            <button class="back-button" onclick="showLevel('chip')">← Back to Chips</button>
+            
+            <div class="description-panel">
+                <div class="description-title">
+                    <span style="font-size: 1.5em;">🗄️</span>
+                    <span>Memory Banks</span>
+                </div>
+                <div class="description-text">
+                    Banks are independent subdivisions within a memory chip that can be accessed concurrently. Each bank contains 32 MB (256 Mbit) organized into rows and columns. Bank interleaving allows the memory controller to access different banks simultaneously, hiding the latency of row activation and improving overall throughput.
+                </div>
+                <div class="info-highlight">
+                    <strong>🔍 Parallelism Power:</strong> While one bank is performing a row activation, another can be reading data, and yet another can be precharging. This pipeline parallelism is crucial for maintaining high memory bandwidth in real-world applications.
+                </div>
+                <div class="tech-specs">
+                    <div class="spec-item">
+                        <div class="spec-label">Capacity per Bank</div>
+                        <div class="spec-value">32 MB</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Density</div>
+                        <div class="spec-value">256 Mbit</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Rows per Bank</div>
+                        <div class="spec-value">16,384</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Row Size</div>
+                        <div class="spec-value">2 KB</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="visualization-title">8 Banks in Memory Chip</div>
+            <div class="items-grid">
+                <div class="clickable-item" onclick="showLevel('row', 0)">
+                    <div class="item-icon">📚</div>
+                    <div class="item-title">BANK 0</div>
+                    <div class="item-capacity">32 MB</div>
+                    <div class="item-details">
+                        • 16,384 Rows<br>
+                        • 16,384 Columns<br>
+                        • 2 KB row buffer
+                    </div>
+                    <div class="click-hint">👆 View Rows</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('row', 1)">
+                    <div class="item-icon">📚</div>
+                    <div class="item-title">BANK 1</div>
+                    <div class="item-capacity">32 MB</div>
+                    <div class="item-details">
+                        • 16,384 Rows<br>
+                        • 16,384 Columns<br>
+                        • 2 KB row buffer
+                    </div>
+                    <div class="click-hint">👆 View Rows</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('row', 2)">
+                    <div class="item-icon">📚</div>
+                    <div class="item-title">BANK 2</div>
+                    <div class="item-capacity">32 MB</div>
+                    <div class="item-details">
+                        • 16,384 Rows<br>
+                        • 16,384 Columns<br>
+                        • 2 KB row buffer
+                    </div>
+                    <div class="click-hint">👆 View Rows</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('row', 3)">
+                    <div class="item-icon">📚</div>
+                    <div class="item-title">BANK 3</div>
+                    <div class="item-capacity">32 MB</div>
+                    <div class="item-details">
+                        • 16,384 Rows<br>
+                        • 16,384 Columns<br>
+                        • 2 KB row buffer
+                    </div>
+                    <div class="click-hint">👆 View Rows</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('row', 4)">
+                    <div class="item-icon">📚</div>
+                    <div class="item-title">BANK 4</div>
+                    <div class="item-capacity">32 MB</div>
+                    <div class="item-details">
+                        • 16,384 Rows<br>
+                        • 16,384 Columns<br>
+                        • 2 KB row buffer
+                    </div>
+                    <div class="click-hint">👆 View Rows</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('row', 5)">
+                    <div class="item-icon">📚</div>
+                    <div class="item-title">BANK 5</div>
+                    <div class="item-capacity">32 MB</div>
+                    <div class="item-details">
+                        • 16,384 Rows<br>
+                        • 16,384 Columns<br>
+                        • 2 KB row buffer
+                    </div>
+                    <div class="click-hint">👆 View Rows</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('row', 6)">
+                    <div class="item-icon">📚</div>
+                    <div class="item-title">BANK 6</div>
+                    <div class="item-capacity">32 MB</div>
+                    <div class="item-details">
+                        • 16,384 Rows<br>
+                        • 16,384 Columns<br>
+                        • 2 KB row buffer
+                    </div>
+                    <div class="click-hint">👆 View Rows</div>
+                </div>
+                <div class="clickable-item" onclick="showLevel('row', 7)">
+                    <div class="item-icon">📚</div>
+                    <div class="item-title">BANK 7</div>
+                    <div class="item-capacity">32 MB</div>
+                    <div class="item-details">
+                        • 16,384 Rows<br>
+                        • 16,384 Columns<br>
+                        • 2 KB row buffer
+                    </div>
+                    <div class="click-hint">👆 View Rows</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Row Level -->
+        <div id="level-row" class="level-container hidden">
+            <button class="back-button" onclick="showLevel('bank')">← Back to Banks</button>
+            
+            <div class="description-panel">
+                <div class="description-title">
+                    <span style="font-size: 1.5em;">📏</span>
+                    <span>Memory Rows & Row Buffer</span>
+                </div>
+                <div class="description-text">
+                    Each bank contains 16,384 rows (2^14), and each row is 16,384 bits (2 KB) wide. When a row is accessed, the entire row is read into the row buffer—a high-speed cache within the chip. Subsequent accesses to the same row (row hits) are very fast since the data is already in the buffer. Accessing a different row requires precharging the current row and activating the new one (row miss), which incurs significant latency.
+                </div>
+                <div class="info-highlight">
+                    <strong>🔍 Row Buffer Optimization:</strong> Memory access patterns that maximize row buffer hits dramatically improve performance. This is why memory locality is so important—accessing sequential addresses keeps you in the same row, avoiding expensive row activation penalties.
+                </div>
+                <div class="tech-specs">
+                    <div class="spec-item">
+                        <div class="spec-label">Total Rows</div>
+                        <div class="spec-value">16,384</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Row Address Bits</div>
+                        <div class="spec-value">14 bits (2^14)</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Row Size</div>
+                        <div class="spec-value">2 KB</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Columns per Row</div>
+                        <div class="spec-value">16,384</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row-visualization">
+                <div class="visualization-title">Sample Rows in Bank (16,384 total rows)</div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div class="row-strip" onclick="showLevel('column', 0)">
+                        <div style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.9em; color: #00f5ff;">ROW 0 → 16,384 bits (2 KB)</div>
+                    </div>
+                    <div class="row-strip" onclick="showLevel('column', 1)">
+                        <div style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.9em; color: #00f5ff;">ROW 1 → 16,384 bits (2 KB)</div>
+                    </div>
+                    <div class="row-strip" onclick="showLevel('column', 2)">
+                        <div style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.9em; color: #00f5ff;">ROW 2 → 16,384 bits (2 KB)</div>
+                    </div>
+                    <div style="text-align: center; color: #666; padding: 10px;">⋮ 16,378 more rows ⋮</div>
+                    <div class="row-strip" onclick="showLevel('column', 16383)">
+                        <div style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 0.9em; color: #00f5ff;">ROW 16,383 → 16,384 bits (2 KB)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Column Level -->
+        <div id="level-column" class="level-container hidden">
+            <button class="back-button" onclick="showLevel('row')">← Back to Rows</button>
+            
+            <div class="description-panel">
+                <div class="description-title">
+                    <span style="font-size: 1.5em;">📐</span>
+                    <span>Memory Columns & Individual Cells</span>
+                </div>
+                <div class="description-text">
+                    Each row contains 16,384 columns (2^14), where each column holds a single bit. A column address selects which bits from the active row buffer are read or written. The intersection of a row and column identifies a unique memory cell. Each DRAM cell consists of a tiny capacitor that stores a bit as electrical charge (charged = 1, discharged = 0) and a transistor that controls access to that capacitor.
+                </div>
+                <div class="info-highlight">
+                    <strong>🔍 The DRAM Cell:</strong> Each cell is incredibly small—measured in nanometers. The capacitor's charge leaks over time, which is why DRAM requires constant refreshing (every 64ms typically). This is the "Dynamic" in DRAM. The row/column architecture creates a dense 2D grid that maximizes storage density.
+                </div>
+                <div class="tech-specs">
+                    <div class="spec-item">
+                        <div class="spec-label">Columns per Row</div>
+                        <div class="spec-value">16,384</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Column Address Bits</div>
+                        <div class="spec-value">14 bits (2^14)</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Cell Size</div>
+                        <div class="spec-value">1 bit</div>
+                    </div>
+                    <div class="spec-item">
+                        <div class="spec-label">Burst Length</div>
+                        <div class="spec-value">8 words</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="visualization-title">Column Grid Visualization (Simplified - showing 256 of 16,384 columns)</div>
+            <div class="column-grid" style="grid-template-columns: repeat(16, 1fr); max-width: 600px; margin: 20px auto;">
+            </div>
+            <div style="text-align: center; color: #aaa; margin: 20px 0;">
+                Each cell represents 1 bit of data • Hover to see cell interaction<br>
+                Full grid: 16,384 × 16,384 = 268,435,456 bits = 32 MB per bank
+            </div>
+            
+            <div class="info-highlight">
+                <strong>💡 Burst Read Operation:</strong> When reading data, DDR4 performs burst transfers of 8 words (64 bytes total) from consecutive column addresses. This is why memory transfers happen in 64-byte chunks—it's the burst length multiplied by the 8-byte bus width.
+            </div>
+        </div>
+        
+        <script>
+            let currentLevel = 'channel';
+            let currentSelection = {};
+            
+            // Initialize column grid
+            function initColumnGrid() {
+                const grid = document.querySelector('.column-grid');
+                if (grid && grid.children.length === 0) {
+                    for (let i = 0; i < 256; i++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'column-cell';
+                        cell.title = `Column ${i} - Bit ${i % 16}`;
+                        grid.appendChild(cell);
+                    }
+                }
+            }
+            
+            function showLevel(level, index = null) {
+                // Hide all levels
+                document.querySelectorAll('.level-container').forEach(el => {
+                    el.classList.add('hidden');
+                });
+                
+                // Show selected level
+                document.getElementById('level-' + level).classList.remove('hidden');
+                
+                // Update breadcrumb
+                updateBreadcrumb(level, index);
+                
+                // Initialize column grid if showing column level
+                if (level === 'column') {
+                    setTimeout(initColumnGrid, 100);
+                }
+                
+                // Scroll to top
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                
+                currentLevel = level;
+                if (index !== null) {
+                    currentSelection[level] = index;
+                }
+            }
+            
+            function updateBreadcrumb(level, index) {
+                const breadcrumb = document.getElementById('breadcrumb');
+                let path = [];
+                
+                if (level !== 'channel') path.push('Channel 1');
+                if (['dimm', 'rank', 'chip', 'bank', 'row', 'column'].includes(level)) {
+                    path.push('DIMMs');
+                }
+                if (['rank', 'chip', 'bank', 'row', 'column'].includes(level)) {
+                    path.push(`DIMM ${currentSelection.rank || 0}`);
+                }
+                if (['chip', 'bank', 'row', 'column'].includes(level)) {
+                    path.push('Ranks');
+                }
+                if (['bank', 'row', 'column'].includes(level)) {
+                    path.push(`Chip ${currentSelection.chip || 0}`);
+                }
+                if (['row', 'column'].includes(level)) {
+                    path.push(`Bank ${currentSelection.bank || 0}`);
+                }
+                if (level === 'column') {
+                    path.push(`Row ${currentSelection.row || 0}`);
+                }
+                
+                breadcrumb.innerHTML = '📍 ' + path.join(' → ') + (index !== null ? ` → ${level.toUpperCase()} ${index}` : '');
+            }
+            
+            // Initialize
+            updateBreadcrumb('channel');
+        </script>
