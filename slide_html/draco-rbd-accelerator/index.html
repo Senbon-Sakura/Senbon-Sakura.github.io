@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> draco-rbd-accelerator </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="draco-precision-aware-rbd-accelerator" class="text-2xl mt-2 font-sans">DRACO: Precision-Aware RBD Accelerator</h1>
+<h2 id="_1" class="text-xl mt-2 pb-2 font-sans">基于精度感知量化的机器人刚体动力学加速器</h2>
+<p class="font-serif my-1"><strong>Authors</strong>: Xingyu Liu; Jiawei Liang; Yipu Zhang; Linfeng Du; Chaofang Ma; Hui Yu; Jiang Xu; Wei Zhang
+<strong>Venue</strong>: ISCA/MICRO 2026
+<strong>Presenter</strong>: zongwu wang
+<strong>Date</strong>: 2026-05-25</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Bottleneck</strong>: 高 DOF 机器人 MAC 耗尽 DSP, Minv 倒数占 50%+ 延迟</li>
+<li class="ml-8"><strong>Idea</strong>: 量化(32→24/18-bit) + division deferring + DSP 复用</li>
+<li class="ml-8"><strong>Result</strong>: <strong>8× 吞吐, 7.4× 延迟降低</strong>, Atlas 首次 1kHz 控制</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="rbd" class="text-2xl mt-2 font-sans">机器人控制与 RBD</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">控制环路 <strong>kHz</strong> 级, RBD 占 <strong>90%</strong> 运行时间</li>
+</ul>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_0_Figure_9.jpeg" width="820" style="max-width: 92%; max-height: 520px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">三大瓶颈</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_1_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 520px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="key-observation" class="text-2xl mt-2 font-sans">Key Observation</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">机器人对模型误差有内在鲁棒性 → 量化误差可接受</li>
+<li class="ml-8">24-bit MAC = 1 DSP58, 32-bit = 4 DSP48 → <strong>4× DSP 节省</strong></li>
+<li class="ml-8">RBD 递归致误差非线性传播 → 需系统化搜索位宽</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="rbd" class="text-2xl mt-2 font-sans">RBD 函数与现有架构</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_2_Figure_15.jpeg" width="820" style="max-width: 92%; max-height: 520px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="draco" class="text-2xl mt-2 font-sans">DRACO 架构总览</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_7_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 520px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="cms" class="text-2xl mt-2 font-sans">量化框架: CMS 闭环仿真</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_3_Figure_8.jpeg" width="820" style="max-width: 92%; max-height: 520px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">误差传播与启发式剪枝</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">误差界: $|\delta x| \leq 2^{-n_{\text{frac}}-1}$</li>
+<li class="ml-8">三类剪枝: 关节深度累积 · 惯量放大 · 高速放大</li>
+</ul>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_4_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">误差补偿</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 Minv 对角项施加偏移矩阵</li>
+<li class="ml-8">Frobenius 范数: <strong>4.97 → 1.65</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="division-deferring" class="text-2xl mt-2 font-sans">Division Deferring: 算法</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Minv 后向 $D_i^{-1}$ 在最长路径, 占 <strong>&gt;50%</strong> 运行时间</li>
+<li class="ml-8">同乘 $D_i$ 将除法暂缓为乘法, 缩放因子 $\alpha_i = D_i \cdot \alpha_{i+1}$</li>
+</ul>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_6_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="division-deferring" class="text-2xl mt-2 font-sans">Division Deferring: 数据流</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Mb 计算缩放因子(纯乘法) → 交错送入共享流水线除法器</li>
+<li class="ml-8">除法结果传至 Mf, 与前向传播<strong>并行</strong></li>
+<li class="ml-8"><strong>3 个 Mb 共享 1 个除法器 → Minv 延迟 2×+</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="dsp" class="text-2xl mt-2 font-sans">跨模块 DSP 复用</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">RNEA(快) vs Minv/ΔRNEA(慢) → II 失衡 → DSP 空闲</li>
+</ul>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_7_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 520px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="fd" class="text-2xl mt-2 font-sans">FD 计算: 端到端追踪</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">RNEA 前/后向 → ID(τ)</li>
+<li class="ml-8">Minv 后向: division deferring 缩放因子</li>
+<li class="ml-8">共享除法器并行 → Mf 恢复 $M^{-1}$</li>
+<li class="ml-8">乘法器: $M^{-1} \cdot \tau$ → FD</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="hardware-overhead" class="text-2xl mt-2 font-sans">Hardware Overhead</h1>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>DRACO</th>
+<th>Dadu-RBD</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DSP</td>
+<td>5073</td>
+<td>4241</td>
+</tr>
+<tr>
+<td>LUT</td>
+<td>584k</td>
+<td>638k</td>
+</tr>
+<tr>
+<td>Power</td>
+<td>33.5W</td>
+<td>36.8W</td>
+</tr>
+</tbody>
+</table></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="methodology" class="text-2xl mt-2 font-sans">Methodology</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">V80(DSP58) + U50(DSP48), <strong>228MHz</strong></li>
+<li class="ml-8">iiwa(7-DOF), HyQ(12), Atlas(28), Baxter(15)</li>
+<li class="ml-8">vs Pinocchio(CPU), GRiD(GPU), Roboshape/Dadu-RBD(FPGA)</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">延迟与吞吐</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_9_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 520px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="dsp" class="text-2xl mt-2 font-sans">DSP 效率与控制率</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Throughput/DSP: <strong>4.2×–5.8×</strong> vs Dadu-RBD</li>
+<li class="ml-8">Atlas: <strong>55 steps@250Hz</strong>, 首次 <strong>1kHz</strong> 控制</li>
+</ul>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_10_Figure_8.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ablation" class="text-2xl mt-2 font-sans">Ablation: 量化精度</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">PID 最敏感: 8-bit &gt; 1mm; 12-bit 满足 ±0.5mm</li>
+<li class="ml-8">MPC 最鲁棒: &lt;0.02mm</li>
+</ul>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_8_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ablation-division-deferring-dsp" class="text-2xl mt-2 font-sans">Ablation: Division Deferring &amp; DSP 复用</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-25/Liu_-_2026_-_DRACO_A_Hardware-Efficient_Robot_Rigid_Body_Dynamics_Accelerator_with_Precision-Aware_Quantization_images/_page_10_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 520px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="conclusion" class="text-2xl mt-2 font-sans">Conclusion</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>量化框架</strong>: DSP 降低 <strong>4×</strong>, 首个系统化 RBD 量化评估</li>
+<li class="ml-8"><strong>Division deferring</strong>: Minv 加速 <strong>2×+</strong>, 纯代数变换</li>
+<li class="ml-8"><strong>DSP 复用</strong>: 高 DOF 节省 <strong>16.1%</strong></li>
+<li class="ml-8">协同 → <strong>8× 吞吐, 7.4× 延迟降低</strong>, Atlas 首次 1kHz</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="critique" class="text-2xl mt-2 font-sans">Critique</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Pros</strong>: 三层 co-design; 量化框架填空白; division deferring 优雅</li>
+<li class="ml-8"><strong>Cons</strong>: 误差缺形式化界; 搜索 4h; 平台差异</li>
+<li class="ml-8"><strong>Next</strong>: 量化 + 鲁棒控制器进一步压缩位宽</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

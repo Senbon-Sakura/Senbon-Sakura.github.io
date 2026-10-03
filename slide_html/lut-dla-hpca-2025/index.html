@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> lut-dla-hpca-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="lut-dla" class="text-2xl mt-2 font-sans">LUT-DLA</h1>
+<h2 id="lut-dla-dla" class="text-xl mt-2 pb-2 font-sans">LUT-DLA：查表式极低比特 DLA</h2>
+<p class="font-serif my-1">Guoyu Li, Shengyu Ye, Chunyun Chen, Yang Wang, Fan Yang, Ting Cao, Cheng Liu, Mohamed M. Sabry Aly, Mao Yang<br/>
+Microsoft Research, UCAS, NTU Singapore<br/>
+HPCA 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-03-24</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: <code>scalar quantization</code> 压到 <code>INT1</code> 后，ALU 的 area / power efficiency 基本收敛。</li>
+<li class="ml-8"><strong>方法</strong>: 用 <code>vector quantization + PSum LUT</code> 把 GEMM 改成 <code>matching + lookup + accumulation</code>。</li>
+<li class="ml-8"><strong>结果</strong>: same-area 下比传统 DLA 快 <code>6.2x~12.0x</code>，功耗/面积效率提升 <code>1.4x~7.0x</code> 与 <code>1.5x~146.1x</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="int1" class="text-2xl mt-2 font-sans">INT1 已接近墙</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_0_Figure_11.jpeg" width="820" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.1 的关键信号不是 “低 bit 更好”，而是 <strong>低到 1-bit 后收益开始收敛</strong>。</li>
+<li class="ml-8">论文的切题点是: <strong>继续抠 arithmetic bitwidth，不如直接换计算范式</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="mac" class="text-2xl mt-2 font-sans">MAC 可以改写成查表</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_2_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">子向量先做 <code>VQ</code>，在线只保留 centroid <code>index</code>。</li>
+<li class="ml-8">权重固定后，<code>centroid × weight</code> 可离线预计算成 <code>PSum LUT</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">论文要解决三件事</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Architecture</strong>: 现有 LUT work 多在 CPU/PIM 上“能跑”，缺面向 <code>matching + lookup</code> 的专用 DLA。</li>
+<li class="ml-8"><strong>Training</strong>: 旧方法从头训或收敛差，很难扩到大模型。</li>
+<li class="ml-8"><strong>Co-design</strong>: <code>v / c / metric / n_CCU / n_IMM</code> 同时影响 accuracy 和 hardware cost。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">框架是三段闭环</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_2_Figure_15.jpeg" width="820" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Hardware Generator</strong> 负责 <code>CCM + IMM + dataflow</code>。</li>
+<li class="ml-8"><strong>LUTBoost</strong> 负责把普通 DNN 转成可用的 LUT model。</li>
+<li class="ml-8"><strong>DSE Engine</strong> 把 model knob 和 hardware knob 放在同一个搜索环里。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ccm-imm" class="text-2xl mt-2 font-sans">CCM 和 IMM 解耦</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_4_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>CCM</code> 做 similarity search，<code>IMM</code> 做 <code>PSum LUT</code> 查询与累加。</li>
+<li class="ml-8">两者之间用 <code>asynchronous FIFO</code> 解耦，可跑在不同 clock domain。</li>
+<li class="ml-8">这让 compute-heavy 前端和 memory-heavy 后端可以独立扩展。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ccu" class="text-2xl mt-2 font-sans">CCU 把匹配做成流水</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_4_Figure_2.jpeg" width="780" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">每个 <code>dPE</code> 比较一部分 centroid，并传递 <code>min distance + index + vector</code>。</li>
+<li class="ml-8">结果是 <strong>fully pipelined nearest-centroid search</strong>，持续向 IMM 供给 index。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ls-dataflow" class="text-2xl mt-2 font-sans">LS dataflow 才让架构落地</h1>
+<table>
+<thead>
+<tr>
+<th>Dataflow</th>
+<th>Total Size</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MNK</code></td>
+<td><code>2064.1KB</code></td>
+<td>LUT 几乎常驻片上</td>
+</tr>
+<tr>
+<td><code>KMN</code></td>
+<td><code>408.0KB</code></td>
+<td>scratchpad 过大</td>
+</tr>
+<tr>
+<td><code>KNM</code></td>
+<td><code>385.3KB</code></td>
+<td>仍然偏重存储</td>
+</tr>
+<tr>
+<td><code>LUT-Stationary</code></td>
+<td><code>17.3KB</code></td>
+<td>LUT 与 scratchpad 最平衡</td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">在 <code>M=512,K=N=768,v=4,c=32</code> 下，LS 把片上总存储压到 <strong><code>17.3KB</code></strong>。</li>
+<li class="ml-8">关键不是减少总传输量，而是用 <code>ping-pong buffer</code> 把装载延迟藏到计算后面。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="operator" class="text-2xl mt-2 font-sans">一次 operator 如何执行</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>CCM</code> 按子空间对输入向量做 centroid matching，产出 index。</li>
+<li class="ml-8"><code>IMM</code> 按 <code>k/n</code> tile 装载 <code>PSum LUT</code>，再用 index 查表并写回 scratchpad。</li>
+<li class="ml-8"><code>LS dataflow</code> 优先复用同一 LUT / codebook；瓶颈若偏 lookup，就扩 <code>IMM</code> 而不是盲目扩 <code>CCU</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="lutboost-centroid" class="text-2xl mt-2 font-sans">LUTBoost 先训 centroid</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_5_Figure_2.jpeg" width="800" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">三阶段: <code>replace linear ops -&gt; train centroids -&gt; joint train centroids + weights</code>。</li>
+<li class="ml-8">直觉是先把 feature prototype 训稳，再让 weights 去适配，避免一开始 overfit 随机 centroid。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="multi-stage" class="text-2xl mt-2 font-sans">Multi-stage 直接改善收敛</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_5_Figure_8.jpeg" width="800" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">BERT 例子里，先训 centroid 可在前 <code>2000</code> iterations 明显压低 loss。</li>
+<li class="ml-8"><code>CIFAR100</code> 上，multi-stage 比 single-stage 提升 <code>3.27~5.84pt (L2)</code>，<code>5.57~7.20pt (L1)</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="metric" class="text-2xl mt-2 font-sans">metric 也是硬件旋钮</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_7_Figure_1.jpeg" width="800" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>L1</code> 去掉乘法器，<code>Chebyshev</code> 进一步简化比较逻辑。</li>
+<li class="ml-8">代价是精度只比 <code>L2</code> 略差，但 hardware area / energy 明显更低。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="dse" class="text-2xl mt-2 font-sans">DSE 在平衡三个阶段</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_8_Figure_5.jpeg" width="800" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">目标是最小化 <code>max(load, sim, lut)</code>，不是只盯单一 roofline。</li>
+<li class="ml-8">搜索流程: 先用 computation / memory / PPA 模型裁剪，再用 LUTBoost 早期精度做粗筛。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">实验方法够完整</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Models</strong>: <code>ResNet20/32/56</code>, <code>ResNet18</code>, <code>VGG11</code>, <code>LeNet</code>, <code>BERT</code>, <code>DistillBERT</code>, <code>OPT-125M</code>。</li>
+<li class="ml-8"><strong>Training</strong>: CNN 先训 centroid <code>20 epochs</code> 再 joint <code>300 epochs</code>；BERT 类先训 <code>2000</code> iterations。</li>
+<li class="ml-8"><strong>Hardware</strong>: <code>Chisel RTL + Cadence Genus + 28nm FD-SOI @ 300MHz</code>。</li>
+<li class="ml-8"><strong>Baselines</strong>: <code>NVDLA</code>, <code>Gemmini</code>, <code>PQA</code>, 以及 <code>PECAN/POA</code> 的准确率对比。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">精度损失是可控的</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">CNN 的 accuracy drop 为 <code>0.1%~3.1% (L2)</code>、<code>0.1%~3.4% (L1)</code>、<code>0.1%~3.8% (Chebyshev)</code>。</li>
+<li class="ml-8">Transformer 的 accuracy drop 为 <code>1.4%~3.0%</code>。</li>
+<li class="ml-8"><code>OPT-125M</code> 在 GLUE 上平均分仍有 <code>84.9 / 85.4</code>，说明 LUTBoost 已能扩到更大模型。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="lut" class="text-2xl mt-2 font-sans">相比旧 LUT 训练更强</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_10_Figure_2.jpeg" width="800" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 <code>PECAN/PQA</code>，LUTBoost 在 <code>CIFAR10</code> 平均高 <code>2.5%</code>，在 <code>CIFAR100</code> 平均高 <code>8.2%</code>。</li>
+<li class="ml-8">这说明论文不只是做了 accelerator，也补齐了 LUT model 的训练可用性。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ppa" class="text-2xl mt-2 font-sans">PPA 很有说服力</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_11_Figure_10.jpeg" width="800" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Design1</code> 面积接近 <code>NVDLA-Small</code>，但在 <code>BERT / ResNet18</code> 上快 <code>6.2x / 12.0x</code>。</li>
+<li class="ml-8"><code>Design2</code> 吞吐接近 <code>NVDLA-Large</code>，面积只有其 <code>1/7</code>。</li>
+<li class="ml-8"><code>Design3</code> 达到 <code>759.5 GOPS/mm^2</code> 与 <code>5.6 GOPS/mW</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">端到端收益也成立</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Li_-_2025_-_LUT-DLA_Lookup_Table_as_Efficient_Extreme_Low-Bit_Deep_Learning_Accelerator_images/_page_11_Figure_8.jpeg" width="800" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Design2</code> 在 CNN 上超过 <code>NVDLA-Large</code>，同时节能约 <code>11x</code>。</li>
+<li class="ml-8"><code>Design3</code> 在 BERT 上最高达 <code>72x</code> throughput，energy 降低 <code>11.5x</code>。</li>
+<li class="ml-8">对比 <code>PQA</code>，同参数 GEMM 下 LUT-DLA 片上内存从 <code>6912KB</code> 降到 <code>10.5KB</code>，cycles 再快 <code>1.6x</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">这篇论文真正绕开了 <strong>1-bit scalar arithmetic wall</strong>，把核心路径改成 memory-centric lookup。</li>
+<li class="ml-8"><code>CCM/IMM + LS dataflow + LUTBoost + DSE</code> 形成了一个完整且自洽的系统闭环。</li>
+<li class="ml-8">如果记一个点，就是: <strong>LUT accelerator 能不能落地，关键不在查表本身，而在 data reuse 与 training 可用性</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>最强点</strong>: <code>LS dataflow</code> 和 <code>CCM/IMM decoupling</code>，因为它们解决了 LUT 路线最致命的 storage / bandwidth 问题。</li>
+<li class="ml-8"><strong>局限</strong>: end-to-end 依赖 cycle-accurate simulator；Transformer 只统计 <code>QKV + FFN</code>，未覆盖 <code>softmax/layernorm</code> 全栈成本。</li>
+<li class="ml-8"><strong>开放问题</strong>: 若继续把 memory system 与 attention 更多环节 LUT 化，这条路线才有机会成为大模型主流 accelerator。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>
