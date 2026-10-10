@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> lut-llm-fpga-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="lut-llm" class="text-2xl mt-2 font-sans">LUT-LLM</h1>
+<h2 id="lut-llm-fpga-llm" class="text-xl mt-2 pb-2 font-sans">LUT-LLM：面向 FPGA 的存储型 LLM 推理</h2>
+<p class="font-serif my-1">Zifan He, Shengyu Ye, Rui Ma, Yang Wang, Jason Cong<br/>
+UCLA, Microsoft Research Asia<br/>
+2025 preprint<br/>
+Presenter: wzw<br/>
+Date: 2026-03-24</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>核心瓶颈</strong>: 纯 arithmetic-based LLM inference 在 FPGA 上越来越打不过经过 <code>FlashAttention/FlashDecoding + INT8</code> 优化的 GPU。</li>
+<li class="ml-8"><strong>核心想法</strong>: 把 linear layers 从 MAC 改成 <code>memory-based computation</code>，并用 <code>activation-weight co-quantization + 2D LUT</code> 压低带宽和片上访存压力。</li>
+<li class="ml-8"><strong>核心结果</strong>: 在 <code>Qwen 3 1.7B + AMD V80</code> 上，端到端延迟比 <code>MI210</code> 低 <strong>1.66x</strong>，能效比 <code>A100</code> 高 <strong>1.72x</strong>，推到 <code>32B</code> 仍可达 <strong>2.16x</strong> A100 能效。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">背景</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">单 batch / edge 场景下，LLM inference 很难像云端那样靠 batching 吃满 GPU。</li>
+<li class="ml-8">FPGA 的强项不是算力密度，而是 <strong>fine-grained dataflow</strong> 和更丰富的 distributed on-chip memory。</li>
+<li class="ml-8">论文关心的不是 attention 全部改写，而是 <strong>先把最重的 linear projection 改成查表执行</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么要换范式</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/He_-_2025_-_LUT-LLM_Efficient_Large_Language_Model_Inference_with_Memory-based_Computations_on_FPGAs_images/_page_1_Figure_2.jpeg" width="900"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">现状: GPU 近年在 <code>INT8 + KV-cache optimized decoding</code> 上进步很快，SoTA FPGA 已经不再天然占优。</li>
+<li class="ml-8">观察: <code>AMD V80</code> 的片上 memory units 数量约是 <code>A100</code> 的 <strong>14.9x</strong>，容量也更大。</li>
+<li class="ml-8">结论: 如果还用 MAC 路线拼 compute，FPGA 吃亏; 必须改成 <strong>use memory as compute</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="lut" class="text-2xl mt-2 font-sans">现有 LUT 路线为什么不够</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Weight VQ only</strong>: 减少权重流量，但 decode 仍受片上 memory ports 和 FP32 reconstruction 限制。</li>
+<li class="ml-8"><strong>Activation VQ only</strong>: 查表简单，但 LUT / codebook 体积太大，decode 和短 context prefill 会严重 memory-bound。</li>
+<li class="ml-8"><strong>LLM 额外复杂性</strong>:
+  <code>centroid search</code> 难在 decode 中 pipeline，
+  table lookups 吃 memory ports，
+  linear layers 和 attention / KV-cache 之间的数据搬运也更棘手。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="co-quantization" class="text-2xl mt-2 font-sans">关键观察: 要做 Co-Quantization</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/He_-_2025_-_LUT-LLM_Efficient_Large_Language_Model_Inference_with_Memory-based_Computations_on_FPGAs_images/_page_3_Figure_21.jpeg" width="820"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">论文把三种方案都建了 performance model: <code>weight-only</code>、<code>activation-only</code>、<code>activation-weight co-quantization</code>。</li>
+<li class="ml-8">例子里同样配置下:
+  <code>weight-only</code> 约 <strong>1090 cycles</strong>，
+  <code>activation-only</code> 约 <strong>8256 cycles</strong>，
+  <code>co-quantization</code> 约 <strong>569 cycles</strong>。</li>
+<li class="ml-8">直觉: 两侧都量化后，<strong>2D LUT entry 数下降、memory port 压力变小、INT8 accumulation 更便宜</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="roofline" class="text-2xl mt-2 font-sans">Roofline 给出的设计方向</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/He_-_2025_-_LUT-LLM_Efficient_Large_Language_Model_Inference_with_Memory-based_Computations_on_FPGAs_images/_page_4_Figure_2.jpeg" width="860"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">naive <code>activation VQ</code> 的 memory-based compute 在长序列 prefill 上能比 FP16 arithmetic 更快。</li>
+<li class="ml-8">但 decode / short-context prefill 会因为 LUT 和 codebook 太大而 <strong>operational intensity 很差</strong>。</li>
+<li class="ml-8">这张图真正说明的是:
+  <strong>memory-based 路线不是错，错的是只量化 activation，不压缩 weight side 的查表代价。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">高层架构</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/He_-_2025_-_LUT-LLM_Efficient_Large_Language_Model_Inference_with_Memory-based_Computations_on_FPGAs_images/_page_5_Figure_2.jpeg" width="900"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>LUTLinear engine</strong>: 负责全部 linear projections，是论文真正的主角。</li>
+<li class="ml-8"><strong>Dataflow attention engine</strong>: 用 FP32 GEMM/GEMV 支撑 prefill 和 decode 两阶段。</li>
+<li class="ml-8"><strong>SFUs</strong>: 处理 <code>SwiGLU</code>、<code>LayerNorm</code> 等非线性。</li>
+<li class="ml-8">统一设计同时服务 prefill / decode，不需要两套独立 accelerator。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1-bpcsu" class="text-2xl mt-2 font-sans">机制 1: BPCSU</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/He_-_2025_-_LUT-LLM_Efficient_Large_Language_Model_Inference_with_Memory-based_Computations_on_FPGAs_images/_page_6_Figure_2.jpeg" width="900"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">问题: decode 时输入序列短，传统单链 <code>centroid search</code> setup latency 太高。</li>
+<li class="ml-8">方案: <code>Bandwidth-aware Parallel Centroid Search Unit</code> 把 dPE 排成 <strong>多条 pipeline chains + 小 reduction tree</strong>。</li>
+<li class="ml-8">核心不是盲目全并行，而是让搜索延迟 <strong>刚好能被后续 LUT loading 覆盖</strong>。</li>
+<li class="ml-8">文中示例配置下，<code>c_a=64, c_w=16</code> 时每个 BPCSU 选 <code>l=16</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2-2d-lut-psum" class="text-2xl mt-2 font-sans">机制 2: 2D LUT PSum</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/He_-_2025_-_LUT-LLM_Efficient_Large_Language_Model_Inference_with_Memory-based_Computations_on_FPGAs_images/_page_6_Figure_4.jpeg" width="900"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">普通 <code>1D LUT</code> 对每个 output element 单独查表，memory capacity 和 partial-sum latency 都偏高。</li>
+<li class="ml-8">LUT-LLM 先按 activation centroid 取出 <strong>一整行 LUT row register</strong>，再用 weight centroid indices 批量展开。</li>
+<li class="ml-8">这样每轮只需要较少 memory ports 就能做并行 gather + SIMD accumulation。</li>
+<li class="ml-8">实现上混用 <code>BRAM + URAM + LUTRAM</code>，并复制寄存器降低 fanout。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="3-spatial-temporal-hybrid" class="text-2xl mt-2 font-sans">机制 3: Spatial-Temporal Hybrid</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/He_-_2025_-_LUT-LLM_Efficient_Large_Language_Model_Inference_with_Memory-based_Computations_on_FPGAs_images/_page_6_Figure_7.jpeg" width="860"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">纯 dataflow 不适合 LUTLinear:
+  codebook 会重复加载，<code>nearest-neighbor search</code> 难连续 pipeline。</li>
+<li class="ml-8">纯 sequential 也不好:
+  attention 需要更大的 buffer / partition，反过来挤占 LUT lookup 资源。</li>
+<li class="ml-8">最终方案:
+  <code>LUTLinear</code> 按 operation sequential，
+  输出再以 dataflow 形式送到 attention / SFU。</li>
+<li class="ml-8">收益: 相比纯 sequential，给 LUT lookup <strong>省出 14% 片上资源</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="token" class="text-2xl mt-2 font-sans">一次 Token 的执行路径</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Step 1: 输入 token 进入 <code>LUTLinear</code>，先做 activation centroid search。</li>
+<li class="ml-8">Step 2: 2D LUT 根据 <code>activation index + weight index</code> 拉出 dot-product entries，并做 SIMD accumulation。</li>
+<li class="ml-8">Step 3: <code>dequantizer</code> 把输出恢复到 <code>FP32</code>，送往 attention / <code>SwiGLU</code> / <code>LayerNorm</code>。</li>
+<li class="ml-8">Step 4: prefill 时 <code>K/V</code> 流式写入 HBM; decode 时在第一层 linear projection 期间预取历史 <code>KV-cache</code>。</li>
+<li class="ml-8">Step 5: attention engine 同时支持 <code>GEMM</code> 和 <code>GEMV</code>，因此同一设计能覆盖 prefill 与 decode。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">实验设置</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Model</strong>: customized <code>Qwen 3 1.7B</code></li>
+<li class="ml-8"><strong>Quantization</strong>: <code>G=512, v=2, c_w=16, c_a=64, INT8 LUT</code>，等价于 <strong>W2A3</strong></li>
+<li class="ml-8"><strong>FPGA flow</strong>: <code>Vitis HLS 2024.2 + TAPA + RapidStream + Vivado 2024.2</code></li>
+<li class="ml-8"><strong>Target</strong>: <code>AMD Alveo V80</code>, <code>227 MHz</code></li>
+<li class="ml-8"><strong>GPU baselines</strong>: <code>AMD MI210</code>, <code>NVIDIA A100</code>, 后端为 <code>vLLM + FlashAttention + FlashDecoding + GPTQ INT8</code></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">模型精度代价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">LUT-LLM 的目标不是“零损失”，而是在 <strong>更激进的 W2A3 等价量化</strong> 下把质量损失压住。</li>
+<li class="ml-8"><code>GLUE + SQuAD v2</code> 上，全部技术打开后相对 <code>FP16</code> 仅 <strong>2.7% geomean</strong> 下降。</li>
+<li class="ml-8">相比 <code>RTN INT8</code>，<code>INT8 LUT</code> 方案 geomean 反而高 <strong>5.5%</strong>。</li>
+<li class="ml-8">相比 <code>SmoothQuant W8A8</code>，LUT-LLM 只低约 <strong>1.2% geomean</strong>; <code>MMLU-Pro</code> 也只低 <strong>0.9</strong> 分。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="gpu" class="text-2xl mt-2 font-sans">GPU 对比: 延迟</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/He_-_2025_-_LUT-LLM_Efficient_Large_Language_Model_Inference_with_Memory-based_Computations_on_FPGAs_images/_page_8_Figure_2.jpeg" width="900"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 <code>MI210</code>，LUT-LLM 端到端 geomean latency 低 <strong>1.66x</strong>，而且只用了约 <strong>1/7</strong> 的带宽。</li>
+<li class="ml-8">对 <code>A100</code>，延迟仍然落后，因为 <code>FlashAttention/FlashDecoding + GPTQ Marlin</code> 非常强。</li>
+<li class="ml-8">但文中指出 LUT-LLM decode 已吃到 <strong>92% available bandwidth</strong>，说明瓶颈基本压到了硬件上限。</li>
+<li class="ml-8">若换成 <code>INT4 lookup tables</code>，输出更长时 latency 可逼近 A100 的 <code>BF16/INT8</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="gpu" class="text-2xl mt-2 font-sans">GPU 对比: 能效</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/He_-_2025_-_LUT-LLM_Efficient_Large_Language_Model_Inference_with_Memory-based_Computations_on_FPGAs_images/_page_8_Figure_4.jpeg" width="860"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">相比 <code>MI210</code>，LUT-LLM geomean energy efficiency 高 <strong>4.1x</strong>。</li>
+<li class="ml-8">相比 <code>A100</code>，即使对方有 <code>GPTQ Marlin</code>，LUT-LLM 仍高 <strong>1.72x</strong>。</li>
+<li class="ml-8">输出长度越长，LUT-LLM 和 GPU 的能效差距越大。</li>
+<li class="ml-8">这很符合论文主张:
+  <strong>decode 本质 memory-bound，FPGA 的 memory-based compute 更容易把每 Joule 价值做高。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="fpga" class="text-2xl mt-2 font-sans">FPGA 对比与实现开销</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/He_-_2025_-_LUT-LLM_Efficient_Large_Language_Model_Inference_with_Memory-based_Computations_on_FPGAs_images/_page_8_Figure_11.jpeg" width="830"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 <code>Allo / InTAR / FlightLLM</code>，LUT-LLM 端到端分别快 <strong>5.6x / 1.9x / roughly similar</strong>，decode 比 <code>FlightLLM</code> 快 <strong>1.1x</strong>。</li>
+<li class="ml-8">能效上，LUT-LLM 达 <strong>2.29 tokens/J</strong>，比 <code>FlightLLM / InTAR / Allo</code> 高 <strong>1.49x / 1.37x / 3.32x</strong>。</li>
+<li class="ml-8">设计频率 <strong>227 MHz</strong>，CLB utilization 达 <strong>81%</strong>，说明 routing 压力并不轻。</li>
+<li class="ml-8">HBM 侧用了 <code>32</code> 个通道拉 LUT/indices，外加 <code>4+4</code> 通道做输入与输出/KV-cache，有效 LUT 带宽约 <strong>227 GB/s</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">这篇论文真正成立的前提</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>linear layers</code> 必须是主瓶颈，否则 memory-based LUTLinear 不会主导整体收益。</li>
+<li class="ml-8"><code>attention</code> 和非线性仍保留高精度执行，所以这不是“整个 LLM 全部查表化”。</li>
+<li class="ml-8">训练侧代价不低:
+  8-GPU 集群上先 pretrain 再 finetune，作者写明约 <strong>2 weeks</strong>。</li>
+<li class="ml-8">现阶段 context window 只做到 <strong>512 tokens</strong>，更长上下文还受训练算法和系统限制。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">论文总结</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">贡献 1: 建立了 memory-based LLM inference 的 performance model，说明 <strong>co-quantization</strong> 才是正确落点。</li>
+<li class="ml-8">贡献 2: 用 <code>BPCSU + 2D LUT PSum + hybrid execution</code> 把查表型 linear 层真正落到 FPGA。</li>
+<li class="ml-8">贡献 3: 在 <code>Qwen 3 1.7B / AMD V80</code> 上做出对 <code>MI210</code> 的 <strong>1.66x latency</strong> 优势，以及对 <code>A100</code> 的 <strong>1.72x energy-efficiency</strong> 优势。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>亮点</strong>: 不是只讲“FPGA memory 多”，而是把这一点推到完整的 <code>quantization + architecture + roofline</code> 闭环。</li>
+<li class="ml-8"><strong>最强 insight</strong>: activation-only LUT 路线并不够，必须连 weight side 一起 co-quantize 才能让 decode 成立。</li>
+<li class="ml-8"><strong>局限</strong>: 训练代价高，context 只到 <code>512</code>，而且对 SoTA FPGA baseline 的比较有一部分依赖 simulator。</li>
+<li class="ml-8"><strong>开放问题</strong>: 如果 attention 也继续低比特化，或者下一代 FPGA/HBM 带宽继续提升，这条路线会不会真正追平甚至超过 A100 latency。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

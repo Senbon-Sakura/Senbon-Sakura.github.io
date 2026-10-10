@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> figlut-hpca-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="figlut" class="text-2xl mt-2 font-sans">FIGLUT</h1>
+<h2 id="figlut-fp-int-gemm" class="text-xl mt-2 pb-2 font-sans">FIGLUT：面向 FP-INT GEMM 的高能效查表加速器</h2>
+<p class="font-serif my-1">Gunho Park, Hyeokjun Kwon, Jiwoo Kim, Jeongin Bae, Baeseong Park, Dongsoo Lee, Youngjoo Lee<br/>
+POSTECH, NAVER Cloud<br/>
+HPCA 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-03-24</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">三句话看懂</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: <code>weight-only quantization</code> 节省了权重存储，但执行端仍卡在 <code>FP activation × INT weight</code>，GPU 往往退回 <code>dequantize + FP-FP compute</code>。</li>
+<li class="ml-8"><strong>方法</strong>: FIGLUT 把局部内积改写成 <code>LUT read + RAC accumulation</code>，再用 <code>FFLUT / hFFLUT</code> 从硬件结构上消掉 bank conflict。</li>
+<li class="ml-8"><strong>结果</strong>: 同样 <code>Q3</code> 权重下，较 SOTA 提升 <strong><code>59% TOPS/W</code></strong> 且 perplexity 降 <strong><code>20%</code></strong>；同等 perplexity 下，<code>Q2.4</code> 方案能效再高 <strong><code>98%</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">问题在哪</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>LLM inference</code> 已经明显 memory-bound，<code>weight-only</code> 的目标本来是减少 DRAM footprint 和 bandwidth。</li>
+<li class="ml-8">但激活通常保留 <code>FP16/BF16</code>，所以真正执行的是 <strong><code>FP-INT GEMM</code></strong>，这不是通用 GPU 最擅长的 datapath。</li>
+<li class="ml-8">现有方案都不理想: <code>GPU</code> 仍依赖 <code>FP-FP</code>；<code>iFPU</code> 支持 mixed precision 但复杂度随位宽线性涨；<code>FIGNA</code> 更高效，但基本锁在固定精度和 uniform quantization。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="gpu-lut" class="text-2xl mt-2 font-sans">GPU LUT 为何失效</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_2_Picture_10.jpeg" width="820" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">LUT-GEMM 的直觉并不新，但在 GPU shared memory 上会遇到 <strong>bank conflict</strong>。</li>
+<li class="ml-8">LUT 构建阶段可顺序安排访问；真正读表时，weight pattern 是随机的，线程容易同时打到同一 bank。</li>
+<li class="ml-8">所以论文的重点不是“想到查表”，而是 <strong>把查表做成 conflict-free hardware primitive</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">核心观察</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_3_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 <code>BCQ / binary-coded</code> 权重，局部内积本质上是若干输入激活的 <strong>正负组合</strong>。</li>
+<li class="ml-8">若每次取 <code>μ</code> 个 binary 权重作为 key，就可预存 <code>2^μ</code> 个结果；于是复杂度可从 <code>O(mnkq)</code> 摊到 <strong><code>O(mnkq/μ)</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">整体架构</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_4_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">总体仍是 <strong>2D systolic array</strong>，但 PE 内部从 <code>MAC</code> 改成了 <code>1 LUT + k RACs</code>。</li>
+<li class="ml-8"><code>LUT generator</code> 在线接收 <code>μ</code> 个输入生成 partial sums；<code>RAC</code> 只负责 <strong>按 weight pattern 查表并累加</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="gemm" class="text-2xl mt-2 font-sans">一次 GEMM 如何跑</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_4_Figure_6.jpeg" width="820" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">数据流仍是 <strong>weight-stationary</strong>，但与 FIGNA 不同，FIGLUT 处理的是 <code>q</code> 个 binary bit-plane。</li>
+<li class="ml-8">生命周期很直接: 取当前 bit-plane 的 weight pattern 作为 key，<code>k</code> 个 RAC 并发查表并沿列累加，最后再乘对应 scale 并加 offset。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="fflut" class="text-2xl mt-2 font-sans">FFLUT 消除冲突</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_5_Picture_6.jpeg" width="760" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">传统 <code>Register File LUT</code> 受限于 read/write ports，不适合大量并发随机读。</li>
+<li class="ml-8">FIGLUT 用 <strong>FFLUT</strong>: <code>flip-flop bundle + dedicated multiplexers</code>。</li>
+<li class="ml-8">好处是一个共享 LUT 可被多个 <code>RAC</code> 同时访问，不再受 bank / port contention 约束。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">μ 怎么选</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_6_Figure_0.jpeg" width="760" style="max-width: 92%; max-height: 250px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>μ</code> 大，单次 read 替代的加法更多；但 LUT 容量按 <code>2^μ</code> 增长，<code>μ=8</code> 已经过大。</li>
+<li class="ml-8">论文最终保留 <code>μ=2</code> 与 <code>μ=4</code> 两档，原因是更大的 LUT 已经不值得。</li>
+<li class="ml-8">最终选择是 <strong><code>μ=4</code></strong>，因为在共享足够多 RAC 时，较大的 LUT 成本能被摊销掉。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="k" class="text-2xl mt-2 font-sans">k 怎么选</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_6_Figure_2.jpeg" width="760" style="max-width: 92%; max-height: 300px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>k</code> 大，更多 RAC 共享同一 LUT，LUT 数量会下降，摊销更好。</li>
+<li class="ml-8">但 <strong>fan-out</strong> 会抬高每个 RAC 的功耗，所以 <code>P_RAC</code> 不是单调下降。</li>
+<li class="ml-8">论文的最终配置是 <strong><code>k=32</code></strong>，这是共享收益与 wire/power 代价之间的折中点。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="hfflut" class="text-2xl mt-2 font-sans">hFFLUT 再砍一半</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_7_Figure_0.jpeg" width="760" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">LUT 值关于符号存在 <strong>vertical symmetry</strong>，所以无需把正负两半都存下来。</li>
+<li class="ml-8"><code>hFFLUT</code> 只保留一半表项，利用 <code>MSB</code> 选择 key 并决定是否 sign-flip。</li>
+<li class="ml-8">归一化功耗上，<code>FFLUT LUT = 1.000</code>，<code>hFFLUT LUT = 0.494</code>，额外 <code>MUX+Decoder = 0.005</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">生成器优化</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_7_Picture_6.jpeg" width="780" style="max-width: 92%; max-height: 250px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>hFFLUT</code> 让生成器只需计算半张表，论文报告 <strong>additions 减少 42%</strong>。</li>
+<li class="ml-8">对 <code>μ=4</code>，作者报告完整生成 hFFLUT 需要 <strong>14 次加法</strong>，而不是对每个结果都暴力重算。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">系统集成</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_7_Figure_8.jpeg" width="780" style="max-width: 92%; max-height: 300px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">系统侧采用 <strong>shared memory + AXI + double buffering</strong>，重点不是系统创新，而是把 MPU 接进常规 SoC。</li>
+<li class="ml-8">这也说明论文把主要工程预算押在 <strong>PE 内 datapath</strong>，而不是 host-runtime 协同。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">实验方法</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Models</strong>: <code>OPT-350M ~ OPT-30B</code>，重点展示 <code>OPT-6.7B</code>。</li>
+<li class="ml-8"><strong>Accuracy setup</strong>: <code>WikiText-2</code>，<code>FP16 activation + Q4 weight</code>，accumulation 用 <code>FP32</code>。</li>
+<li class="ml-8"><strong>Hardware setup</strong>: <code>28nm CMOS @ 100MHz</code>，Synopsys DC 综合；片外 DRAM 用 <code>CACTI</code> 建模。</li>
+<li class="ml-8"><strong>Baselines</strong>: <code>FPE</code>, <code>iFPU</code>, <code>FIGNA</code>, <code>FIGLUT-F</code>, <code>FIGLUT-I</code>。</li>
+<li class="ml-8"><strong>公平性</strong>: 对齐相同最大 <code>TOPS</code>，再比较 <code>TOPS/W</code>、<code>TOPS/mm^2</code> 和 perplexity。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">精度与面积</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_8_Figure_0.jpeg" width="760" style="max-width: 92%; max-height: 210px; object-fit: contain;"/></p>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_8_Figure_7.jpeg" width="760" style="max-width: 92%; max-height: 190px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">数值精度基本不掉: 在 <code>OPT-6.7B</code> 上，<code>GPU / FIGLUT-F / FIGLUT-I</code> 的 perplexity 都约为 <strong><code>24.13</code></strong>。</li>
+<li class="ml-8">面积方面，FIGLUT 用更小的 <code>2 × 16 × 4</code> MPU，论文报告 area efficiency <strong>最高约 <code>1.5×</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">能效结果</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_10_Figure_0.jpeg" width="780" style="max-width: 92%; max-height: 210px; object-fit: contain;"/></p>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Park_-_2025_-_FIGLUT_An_Energy-Efficient_Accelerator_Design_for_FP-INT_GEMM_Using_Look-Up_Tables_images/_page_11_Figure_0.jpeg" width="780" style="max-width: 92%; max-height: 180px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">固定 <code>FP16-Q4</code> 且对齐同样 <code>0.14 TOPS</code> 时，<code>iFPU / FIGNA / FIGLUT</code> 分别是 <code>0.21 / 0.33 / 0.47 TOPS/W</code>。</li>
+<li class="ml-8">混合精度下优势继续放大: <code>Q4</code> 高 <strong><code>1.2×</code></strong>，<code>Q3</code> 高 <strong><code>1.6×</code></strong>。</li>
+<li class="ml-8">在相同 perplexity 目标下，<code>FIGLUT-Q2.4</code> 相对 <code>FIGNA-Q3</code> 还能做到 <strong><code>1.98×</code></strong> 能效，且模型大小再减 <strong><code>20%</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么它会赢</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>算术换查表</strong>: 把 repeated add/sub 变成 single read，是最直接的 compute simplification。</li>
+<li class="ml-8"><strong>FFLUT/hFFLUT</strong>: 解决的不是“容量”一个问题，而是 <strong>concurrency + power</strong> 两个问题。</li>
+<li class="ml-8"><strong>bit-serial 甜蜜点明确</strong>: 位宽越低，FIGLUT 的周期和能耗优势越明显，所以特别契合当前 <code>sub-4-bit LLM inference</code>。</li>
+<li class="ml-8">它的边界也很清楚: 一旦往 <code>Q8</code> 甚至更高精度走，<code>μ</code> 需要继续增大，LUT 与 generator 开销会快速变差。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">FIGLUT 的真实贡献是把 <code>LUT-based FP-INT GEMM</code> 从 kernel idea 推进成 <strong>可布局布线的 accelerator datapath</strong>。</li>
+<li class="ml-8">关键结构就是三件事: <code>RAC</code> 取代 <code>MAC</code>，<code>FFLUT</code> 消除冲突，<code>hFFLUT</code> 把 LUT 主体再砍半。</li>
+<li class="ml-8">如果只记一句话，就是: <strong>在 sub-4-bit LLM 推理里，FIGLUT 用 structure-aware lookup 打破了 bit-serial 的一部分效率瓶颈。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>最强点</strong>: 不是 headline 数字，而是论文真的分析了 <code>μ / k / fan-out / P&amp;R power</code>，工程说服力比很多 accelerator paper 强。</li>
+<li class="ml-8"><strong>主要局限</strong>: Fig.17 里 FIGLUT 和 FIGNA 使用的量化方法不同，mixed-precision 优势里掺杂了算法收益。</li>
+<li class="ml-8"><strong>缺的实验 / 后续</strong>: <code>batch=1</code> decode 下 <code>LUT generation</code> 占比还没拆清；若走向更高精度，需要 <code>hierarchical LUT</code> 或 layer-wise 自适应 <code>μ</code>。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

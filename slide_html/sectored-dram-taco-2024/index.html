@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> sectored-dram-taco-2024 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="sectored-dram" class="text-2xl mt-2 font-sans">Sectored DRAM</h1>
+<h2 id="sectored-dram-dram" class="text-xl mt-2 pb-2 font-sans">Sectored DRAM：一种实用的高能效高性能细粒度 DRAM 架构</h2>
+<p class="font-serif my-1">Ataberk Olgun, F. Nisa Bostanci, Geraldo Francisco de Oliveira Junior, Yahya Can Tugrul, Rahul Bera, Abdullah Giray Yaglikci, Hasan Hassan, Oguz Ergin, Onur Mutlu<br/>
+ETH Zurich, TOBB University of Economics and Technology<br/>
+TACO 2024<br/>
+Presenter: wzw<br/>
+Date: 2026-03-31</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">三句话看懂</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: 处理器常常只真正使用 <code>cache line</code> 中少数几个 <code>word</code>，但 DRAM 仍按 <strong>整块传输 + 整行激活</strong> 工作，造成数据搬运和 activation 双重浪费。</li>
+<li class="ml-8"><strong>方法</strong>: Sectored DRAM 用 <strong><code>Sectored Activation (SA)</code> + <code>Variable Burst Length (VBL)</code></strong> 同时细化 activation 和 transfer，并用 <strong><code>sectored cache + LSQ Lookahead + SP</code></strong> 控住 sector misses。</li>
+<li class="ml-8"><strong>结果</strong>: 对高 MPKI workload，DRAM energy 平均 <strong><code>-20%</code></strong>、性能平均 <strong><code>+17%</code></strong>、system energy 平均 <strong><code>-14%</code></strong>；DRAM chip area overhead 仅 <strong><code>1.72%</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="dram" class="text-2xl mt-2 font-sans">背景：今天的 DRAM</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/Sectored_DRAM_A_Practical_Energy-Efficient_and_High-Performance_Fine-Grained_DRAM_Architecture_images/_page_5_Picture_2.jpeg" width="780" style="max-width: 92%; max-height: 430px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">DRAM 模块由 <code>chips -&gt; banks -&gt; subarrays -&gt; mats</code> 组成，但 <strong>memory controller 看不到 mat</strong>。</li>
+<li class="ml-8">结果是访问一个 8B word，也往往要走 <strong>64B cache block transfer</strong> 和 <strong>整 row activation</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">瓶颈：粗粒度失配</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/Sectored_DRAM_A_Practical_Energy-Efficient_and_High-Performance_Fine-Grained_DRAM_Architecture_images/_page_6_Figure_1.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.2 说明 today 的 burst 按 beat 依次搬整块数据，即使后续只会用其中 1-2 个 words。</li>
+<li class="ml-8">论文测得：粗粒度 transfer 的能耗是 fine-grained transfer 的 <strong><code>1.27×</code></strong>；粗粒度 activation 的能耗是 fine-grained activation 的 <strong><code>1.04×</code></strong>。</li>
+<li class="ml-8">所以真正浪费的不是某一个电路，而是 <strong>channel over-transfer + row over-activation</strong> 的叠加。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Observation 1</strong>: DRAM row 物理上本来就被多个 <code>mats</code> 切开，因此 activation granularity 不一定非得是整 row。</li>
+<li class="ml-8"><strong>Observation 2</strong>: DRAM I/O 已经在用 <code>Read FIFO / burst counter</code> 逐 beat 选择输出，因此 burst length 不一定非得固定为 8 beats。</li>
+<li class="ml-8"><strong>核心洞察</strong>: 只要把这两个“芯片内部已有的细粒度结构”暴露给 controller，就能同时削减 activation 和 transfer 浪费，而不必重做 DRAM PHY。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">总体方案</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">DRAM 侧新增两件事：<strong><code>SA</code></strong> 只开需要的 sectors，<strong><code>VBL</code></strong> 只传需要的 beats。</li>
+<li class="ml-8">处理器侧新增三件事：<strong><code>sectored cache</code></strong> 跟踪部分有效 line，<strong><code>LSQ Lookahead</code></strong> 合并近未来 word 请求，<strong><code>SP</code></strong> 预测本 line 的 useful words。</li>
+<li class="ml-8">整条链路的目标都是让请求携带 <code>sector mask m</code>，使有效 burst 长度退化成 <strong><code>BL_eff = ||m||_1</code></strong>，而不是固定 8 beats。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="sa-row-sectors" class="text-2xl mt-2 font-sans">SA：把 row 切成 sectors</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">设计上，作者给每个 sector 增加 <strong><code>sector latch + sector transistor + extra LWD stripe</code></strong>，让 <code>ACT</code> 不再默认打开所有 mats。</li>
+<li class="ml-8">controller 把 8-bit sector mask 编进 <strong><code>PRE</code></strong> 的未使用编码位；后续 <code>ACT</code> 只打开 mask 选中的 sectors。</li>
+<li class="ml-8">本质上，Sectored DRAM 把原来“4 次 full-row activation 的 <code>tFAW</code> 预算”重新解释成 <strong>固定数量 sector activations 的预算</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="vblburst" class="text-2xl mt-2 font-sans">VBL：burst 长度按需变</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/Sectored_DRAM_A_Practical_Energy-Efficient_and_High-Performance_Fine-Grained_DRAM_Architecture_images/_page_10_Figure_1.jpeg" width="760" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Read FIFO</code> 本来就按 beat 输出条目；VBL 只是把固定的 <code>burst counter</code> 选择逻辑改成由 <code>sector bits</code> 驱动的 encoder。</li>
+<li class="ml-8">controller 和 DRAM 两侧各加一个 <strong>8-bit popcount</strong>，据此决定本次 <code>READ/WRITE</code> 的实际 burst 长度。</li>
+<li class="ml-8">关键收益是 <strong>只传 useful words</strong>，而不是先把整块拉上 channel 再在片上丢掉。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="cache" class="text-2xl mt-2 font-sans">Cache 也要跟着变</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">如果主存能按 word 取数，cache 也必须能表示“这条 line 只有部分 words 有效”。</li>
+<li class="ml-8">论文选择最保守的方案：每个 cache block 只额外加 <strong>8 个 valid bits</strong>，而不是把 line size 直接缩到 8B。</li>
+<li class="ml-8">这一步很关键，因为它用很小的 metadata 成本，避免了 tag storage 爆炸，同时为后面的 sector miss 处理打基础。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="lsq-sp-sector-miss" class="text-2xl mt-2 font-sans">LSQ + SP 控住 sector miss</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/Sectored_DRAM_A_Practical_Energy-Efficient_and_High-Performance_Fine-Grained_DRAM_Architecture_images/_page_12_Figure_1.jpeg" width="820" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>LSQ Lookahead</strong>: 在 load/store queue 中向后看，把同一 cache block 的年轻请求合并进本次 miss。</li>
+<li class="ml-8"><strong>Sector Predictor (SP)</strong>: 记录一个 static load/store 过去实际触碰过哪些 words，下次 miss 时直接把这些 sectors 一起带上。</li>
+<li class="ml-8">没有这两步，fine-grained DRAM 会把 line miss 放大成多次 sector miss，性能会被反噬。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">一次请求怎么走</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Step 1: L1 中访问某个 word，若 <code>tag hit + sector miss</code>，请求带上 demand sector bits 往下走。</li>
+<li class="ml-8">Step 2: <code>LSQ Lookahead</code> 追加近未来会用到的 sectors，<code>SP</code> 再追加历史上常用的 sectors，形成最终 mask。</li>
+<li class="ml-8">Step 3: memory controller 用 mask 驱动 <code>SA + VBL</code>；DRAM 只激活相关 sectors、只返回对应 beats。</li>
+<li class="ml-8">Step 4: sectored cache 回填这些 words，减少未来重复的高延迟 DRAM accesses。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">硬件账单</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>DRAM chip area</strong>: Sectored DRAM 只增加 <strong><code>1.72%</code></strong>；按 bank 看，额外开销约 <strong><code>0.39 mm²</code></strong>。</li>
+<li class="ml-8"><strong>Processor area</strong>: sector bits + <code>SP</code> 使 8-core 处理器面积增加 <strong><code>1.22%</code></strong>；其中 SP 仅 <strong><code>1088 B/core</code></strong>。</li>
+<li class="ml-8"><strong>对比 prior work</strong>: HalfDRAM / HalfPage 的 chip overhead 分别是 <strong><code>2.6% / 5.2%</code></strong>，面积账单更重。</li>
+<li class="ml-8"><strong>实现风险</strong>: <code>PRE</code> 编码承载 sector bits、LSQ 比较逻辑、以及更多 memory requests 对调度器的压力，都是现实落地要面对的验证点。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Infrastructure</strong>: 修改后的 <code>Ramulator + DRAMPower + Rambus Power Model + CACTI</code>。</li>
+<li class="ml-8"><strong>Workloads</strong>: 共 <strong>41</strong> 个，来自 <code>SPEC2006 + SPEC2017 + DAMOV</code>；并按 LLC MPKI 分成 <code>High / Medium / Low</code> 三类。</li>
+<li class="ml-8"><strong>System</strong>: <code>1-16 cores @ 3.6GHz</code>，<code>32KiB L1 / 256KiB L2 / 8MiB L3</code>，<code>DDR4-3200</code>，<code>4 ranks</code>，<code>16 banks/rank</code>，<code>8 sectors/subarray</code>。</li>
+<li class="ml-8"><strong>Default knobs</strong>: <code>128-entry LSQ Lookahead</code>，<code>512-entry SP</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1-sector" class="text-2xl mt-2 font-sans">证据 1：按 sector 读写更省电</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/Sectored_DRAM_A_Practical_Energy-Efficient_and_High-Performance_Fine-Grained_DRAM_Architecture_images/_page_15_Figure_2.jpeg" width="760" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.6 看的是 <code>ACT / READ / WRITE</code> 在 8/4/2/1 sectors 下的 power 与 energy。</li>
+<li class="ml-8">读写一个 sector 相比读写八个 sectors，功耗分别下降 <strong><code>70.0%</code></strong> 和 <strong><code>70.6%</code></strong>。</li>
+<li class="ml-8">但 <code>ACT</code> 总功耗只下降 <strong><code>12.7%</code></strong>，说明整篇 paper 的大头收益其实更多来自 <strong>reduced transfer</strong>, 不只是 reduced activation。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2" class="text-2xl mt-2 font-sans">证据 2：系统优化不可省</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/Sectored_DRAM_A_Practical_Energy-Efficient_and_High-Performance_Fine-Grained_DRAM_Architecture_images/_page_16_Figure_1.jpeg" width="760" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.7 的纵轴是 LLC MPKI；<code>Basic</code> 表示只有 Sectored DRAM，没有 LSQ / SP。</li>
+<li class="ml-8">结果非常刺眼：<code>Basic</code> 的 LLC MPKI 平均变成 baseline 的 <strong><code>3.1×</code></strong>。</li>
+<li class="ml-8"><code>LA128-SP512</code> 把 Basic 的 LLC misses 压回 <strong><code>-52%</code></strong>，说明 <strong>系统 integration 不是配菜，而是主菜</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">性能：谁受益最大</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/Sectored_DRAM_A_Practical_Energy-Efficient_and_High-Performance_Fine-Grained_DRAM_Architecture_images/_page_18_Figure_1.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.9 的主结论：<strong>高 MPKI、多核、低 row-buffer locality</strong> 的 workload 最受益。</li>
+<li class="ml-8">对 16-core 高 MPKI，平均 parallel speedup 为 <strong><code>+26%</code></strong>；根因是 <code>tFAW</code> 放松后能更快发出 ACT。</li>
+<li class="ml-8">对 low/medium MPKI，额外 sector misses 会放大 memory requests；single-core 平均仍有 <strong><code>5.41%</code></strong> 性能损失。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tradeoff" class="text-2xl mt-2 font-sans">对比：性能与能效 tradeoff</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/Sectored_DRAM_A_Practical_Energy-Efficient_and_High-Performance_Fine-Grained_DRAM_Architecture_images/_page_20_Figure_1.jpeg" width="780" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.10 上半部分看 weighted speedup，下半部分看 DRAM energy，baseline 归一化为 1。</li>
+<li class="ml-8">对高 MPKI mixes，Sectored DRAM 达到 <strong><code>1.17× avg / 1.36× max</code></strong>；相对 FGA / PRA 的平均 speedup 是 <strong><code>2.05× / 1.10×</code></strong>。</li>
+<li class="ml-8">相比 HalfDRAM，它只有 <strong><code>0.89×</code></strong> 性能，但 energy 更低 <strong><code>12%</code></strong>、面积更小 <strong><code>34%</code></strong>，卖点是 <strong>更平衡</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="vbl" class="text-2xl mt-2 font-sans">能量拆解：VBL 是大头</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-31/Sectored_DRAM_A_Practical_Energy-Efficient_and_High-Performance_Fine-Grained_DRAM_Architecture_images/_page_20_Figure_3.jpeg" width="780" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Fig.11 左图做 energy breakdown，右图看系统能耗。</li>
+<li class="ml-8"><strong>VBL</strong> 让 <code>RD/WR energy</code> 平均下降 <strong><code>51%</code></strong>，并把 memory-controller 与 DRAM 间传输字节数平均减少 <strong><code>55%</code></strong>。</li>
+<li class="ml-8"><strong>SA</strong> 只让 <code>ACT energy</code> 平均下降 <strong><code>6%</code></strong>；最终 system energy 的 headline 是 <strong><code>-14% avg / -23% max</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">总结</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">这篇工作最重要的贡献，不是“把 DRAM 切得更细”，而是<strong>同时把 activation granularity 和 transfer granularity 都细化</strong>。</li>
+<li class="ml-8">真正让设计成立的不是 SA/VBL 本身，而是 <strong><code>sectored cache + LSQ Lookahead + SP</code></strong> 把 fine-grained DRAM 接回现有 cache-block-based system。</li>
+<li class="ml-8">如果只记一句话：<strong>Sectored DRAM 用很小的硬件代价，换到了高 MPKI workload 上更低的数据搬运浪费与更高的 activation 并行度。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>优点</strong>: 问题定义很准，也明确承认 high-MPKI 才是 sweet spot。</li>
+<li class="ml-8"><strong>最强点</strong>: 同时解决 <code>activation</code> 与 <code>transfer</code> 两个粗粒度问题，比只做 FGA 更完整。</li>
+<li class="ml-8"><strong>局限</strong>: “practical” 仍停留在 architecture-level 假设，且没有 silicon 证据。</li>
+<li class="ml-8"><strong>后续</strong>: 更强的 useful-word predictor，或把它做成可动态开关的 memory mode。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>
