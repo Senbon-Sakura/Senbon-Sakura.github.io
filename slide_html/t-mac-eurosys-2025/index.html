@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> t-mac-eurosys-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="t-mac" class="text-2xl mt-2 font-sans">T-MAC</h1>
+<h2 id="t-mac-cpu-llm" class="text-xl mt-2 pb-2 font-sans">T-MAC：用查表让 CPU 重新适合低比特边缘 LLM</h2>
+<p class="font-serif my-1">Jianyu Wei, Shijie Cao, Ting Cao, Lingxiao Ma, Lei Wang, Yanyong Zhang, Mao Yang<br/>
+USTC, UCAS, Microsoft Research<br/>
+EuroSys 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-03-24</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: <code>low-bit weight</code> 虽然省了存储，但执行端仍要做 <code>W{1,2,3,4}A16</code> 的 mpGEMV/mpGEMM，现有 CPU kernel 往往退回 <code>dequantize + higher-precision compute</code>。</li>
+<li class="ml-8"><strong>方法</strong>: T-MAC 把 mixed-precision 乘法改写成 <code>bit-serial LUT lookup + accumulation</code>，并围绕 CPU 寄存器 / SIMD / layout 做系统化优化。</li>
+<li class="ml-8"><strong>结果</strong>: 相比 <code>llama.cpp</code>，kernel 最多快 <strong><code>6.6x</code></strong>、端到端吞吐最高约 <strong><code>2.8x~6.7x</code></strong>，能耗下降 <strong><code>20.6%~61.2%</code></strong>，BitNet-3B 在 <code>M2 Ultra</code> 上可到 <strong><code>71 tok/s</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="low-bit" class="text-2xl mt-2 font-sans">现有 low-bit 为何不香</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Wei_-_2025_-_T-MAC_CPU_Renaissance_via_Table_Lookup_for_Low-Bit_LLM_Deployment_on_Edge_images/_page_1_Figure_4.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">传统路径是: <strong>先解码 / 反量化低比特权重，再用硬件支持的数据类型做高精度 GEMM</strong>。</li>
+<li class="ml-8">这会同时带来两类损失: <code>dequantization overhead</code>，以及 <strong>每种 bitwidth 都要单独写 layout + kernel</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="bit" class="text-2xl mt-2 font-sans">bit 降低不一定更快</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Wei_-_2025_-_T-MAC_CPU_Renaissance_via_Table_Lookup_for_Low-Bit_LLM_Deployment_on_Edge_images/_page_8_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Figure 6 的关键信号是: <code>llama.cpp</code> 从 <code>4-bit -&gt; 2-bit</code> 并没有线性提速，<code>3-bit</code> 甚至会比 <code>4-bit</code> <strong>慢约 <code>15%</code></strong>。</li>
+<li class="ml-8">所以真正的问题不是“权重够不够低”，而是 <strong>mixed-precision kernel 的执行路径根本没跟着变轻</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">核心观察</h1>
+<p class="font-serif my-1">$$
+AW = \sum_i 2^i AW_i
+$$</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么这很关键</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>INT4 / INT3 / INT2</code> 的差异被收敛成 <strong>bit-plane 个数差异</strong>。</li>
+<li class="ml-8">统一接口后，<code>A × W_i</code> 才能继续改写成 <strong>“预计算 activation + 运行时查表”</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="t-mac" class="text-2xl mt-2 font-sans">T-MAC 全景图</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Wei_-_2025_-_T-MAC_CPU_Renaissance_via_Table_Lookup_for_Low-Bit_LLM_Deployment_on_Edge_images/_page_3_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Offline</strong>: 把权重拆成 bit-plane，并重排成便于加载与查表的格式。</li>
+<li class="ml-8"><strong>Online</strong>: 对 activation 的每个 <code>[1,g]</code> 子向量预计算 LUT，再用权重 pattern 作为 index 查表并累加。</li>
+<li class="ml-8">论文真正做的不是一个 kernel trick，而是一套 <strong>algorithm + layout + ISA-aware implementation</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="mpgemm" class="text-2xl mt-2 font-sans">一次 mpGEMM 如何改写</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Wei_-_2025_-_T-MAC_CPU_Renaissance_via_Table_Lookup_for_Low-Bit_LLM_Deployment_on_Edge_images/_page_4_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>g=4</code> 时，每组 1-bit 权重只有 <code>16</code> 种 pattern，因此 activation 可先预计算成一张长度 <code>16</code> 的 LUT。</li>
+<li class="ml-8">在线阶段只做 <strong><code>unpack index + lookup + add</code></strong>，不再显式做 <code>decode + multiply-accumulate</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1lut" class="text-2xl mt-2 font-sans">机制1：LUT 先放寄存器</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>局部问题</strong>: LUT lookup 是随机访问，如果仍走普通 cache / memory path，查表收益会被访存延迟吃掉。</li>
+<li class="ml-8"><strong>做法</strong>: T-MAC 明确把 LUT 放进 <code>on-chip memory</code>，优先是 <strong>registers</strong>，并调用 <code>NEON TBL</code> 或 <code>AVX2 PSHUF</code> 做并行查表。</li>
+<li class="ml-8"><strong>关键配套</strong>: loop order 从传统的 <code>N/M first</code> 改成先沿 <code>K</code> 构表，再在 <code>M</code> 方向复用同一张 LUT。</li>
+<li class="ml-8"><strong>结论</strong>: 这一步决定了 T-MAC 不是“理论上少乘法”，而是“实际上查得到快表”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2layout" class="text-2xl mt-2 font-sans">机制2：layout 也得改</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Wei_-_2025_-_T-MAC_CPU_Renaissance_via_Table_Lookup_for_Low-Bit_LLM_Deployment_on_Edge_images/_page_5_Figure_6.jpeg" width="780" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Weight permutation</strong>: 按 tile 访问顺序离线重排权重，让 DRAM load 更顺序化。</li>
+<li class="ml-8"><strong>Weight interleaving</strong>: 解决 little-endian unpack 时的额外重排，尽量把 index 直接展开成查表所需顺序。</li>
+<li class="ml-8">论文里 interleaving 本身就能再给 <strong>最高 <code>1.42x</code></strong>，说明 T-MAC 的收益很大一部分来自 <strong>memory-format co-design</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="3-lut" class="text-2xl mt-2 font-sans">机制3：把 LUT 缩到能放下</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Wei_-_2025_-_T-MAC_CPU_Renaissance_via_Table_Lookup_for_Low-Bit_LLM_Deployment_on_Edge_images/_page_6_Figure_0.jpeg" width="780" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Mirror consolidation</strong>: 利用 LUT 的正负对称性，只存一半表项，另一半通过 sign flip 恢复。</li>
+<li class="ml-8"><strong>Table quantization</strong>: 再把 LUT value 从 <code>fp16</code> 压成 <code>int8</code>，减少寄存器与带宽压力。</li>
+<li class="ml-8">两者合起来可把 LUT footprint 压到 <strong>原来的 <code>1/4</code></strong>，这是“寄存器驻留”能否成立的硬约束。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">实现细节决定成败</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Codegen</strong>: 用 <code>TVM + LLVM + AutoTVM</code> 为不同 shape / 平台生成 kernel，而不是手写一份静态实现。</li>
+<li class="ml-8"><strong>ISA mapping</strong>: <code>NEON vqtbl1q_u8</code> / <code>AVX2 _mm256_shuffle_epi8</code> 做 lookup；量化后还能用 <code>vrhaddq_u8</code> / <code>_mm256_avg_epu8</code> 做 fast aggregation。</li>
+<li class="ml-8"><strong>工程坑点</strong>: 直接把 TVM runtime threadpool 嵌进 <code>llama.cpp</code> 会冲突，作者最终改成 <strong>生成 C++ 单线程 block kernel，再挂到 llama.cpp threadpool</strong>。</li>
+<li class="ml-8"><strong>设计点</strong>: <code>g=4</code> 很重要，因为它正好让 LUT 与 SIMD width 匹配；更大 <code>g</code> 会明显抬高寄存器与指令开销。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">实验方法</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Platforms</strong>: <code>M2 Ultra</code>, <code>Raspberry Pi 5</code>, <code>Jetson AGX Orin</code>, <code>Surface Book 3</code>。</li>
+<li class="ml-8"><strong>Models</strong>: <code>Llama-2-7B/13B</code> 的 <code>4/3/2/1-bit</code>，以及 <code>BitNet 1-bit / 1.58-bit</code>。</li>
+<li class="ml-8"><strong>Baseline</strong>: <code>llama.cpp</code> <code>b2794 (May 2024)</code>；mpGEMM 场景额外对比 <code>llama.cpp (BLAS)</code>。</li>
+<li class="ml-8"><strong>Kernel eval</strong>: warmup 后重复 <code>100</code> 次；<strong>model eval</strong>: 生成 <code>64 tokens × 20</code> 轮。</li>
+<li class="ml-8"><strong>一个优点</strong>: 覆盖了 Apple Silicon、Intel、ARM Cortex 和 Raspberry Pi，确实是在验证 “edge CPU”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="kernel" class="text-2xl mt-2 font-sans">Kernel 结果很强</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Wei_-_2025_-_T-MAC_CPU_Renaissance_via_Table_Lookup_for_Low-Bit_LLM_Deployment_on_Edge_images/_page_8_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">单线程 mpGEMV 下，T-MAC 在 <code>1/2/3/4-bit</code> 上最高分别达到 <strong><code>11.2x / 5.8x / 4.7x / 3.1x</code></strong>。</li>
+<li class="ml-8">多线程时会更受 memory bandwidth 约束，但 <code>2-bit</code> 仍能在四个平台上拿到 <strong><code>4.0x / 4.0x / 5.3x / 2.5x</code></strong>。</li>
+<li class="ml-8">这证明 T-MAC 的亮点是: <strong>bit 越低，收益越接近线性释放</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">端到端吞吐也成立</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Wei_-_2025_-_T-MAC_CPU_Renaissance_via_Table_Lookup_for_Low-Bit_LLM_Deployment_on_Edge_images/_page_10_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">集成到 <code>llama.cpp</code> 后，单线程 Raspberry Pi 5 上三种模型分别有 <strong><code>2.8x / 6.7x / 5.8x</code></strong> 的 speedup。</li>
+<li class="ml-8">headline 数字是: <strong>BitNet-b1.58-3B 在 M2 Ultra 单核 <code>30 tok/s</code>、8 核 <code>71 tok/s</code>，在 Raspberry Pi 5 上也能到 <code>11 tok/s</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">能耗收益很实在</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Wei_-_2025_-_T-MAC_CPU_Renaissance_via_Table_Lookup_for_Low-Bit_LLM_Deployment_on_Edge_images/_page_10_Figure_4.jpeg" width="820" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">在 <code>M2 Ultra</code> 多线程上，三种模型的功耗分别下降 <strong><code>10.3% / 10.3% / 17.3%</code></strong>。</li>
+<li class="ml-8">叠加吞吐提升后，总能耗进一步下降 <strong><code>20.6% / 61.2% / 51.3%</code></strong>。</li>
+<li class="ml-8">这说明 T-MAC 并不是“用更多硬件换时间”，而是 <strong>去掉无效 dequantization 与乘法后，time 和 energy 一起下降</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">优化拆解说明真因</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-24/Wei_-_2025_-_T-MAC_CPU_Renaissance_via_Table_Lookup_for_Low-Bit_LLM_Deployment_on_Edge_images/_page_10_Figure_6.jpeg" width="820" style="max-width: 92%; max-height: 380px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>TM-base</code> 只有 intrinsic lookup，但<strong>最多仍比 baseline 慢 <code>17%</code></strong>；说明“想到 LUT”本身并不够。</li>
+<li class="ml-8"><code>table quantization</code> 先把性能拉回 baseline 附近，随后 <code>tiling</code>、<code>permutation</code>、<code>interleaving</code> 分别继续带来 <strong><code>1.45x</code>、<code>1.39x</code>、<code>1.42x</code></strong>。</li>
+<li class="ml-8">所以论文最强的地方不是算法式子，而是 <strong>一整套让 LUT 真能在 CPU 上跑快的 layout / implementation stack</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">精度边界讲得很诚实</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">不开 <code>Fast Aggregation</code> 时，T-MAC 与 <code>llama.cpp</code> 的模型质量几乎一致。</li>
+<li class="ml-8">例如 <code>Llama-2-7B-4bit</code> 单线程上，<code>llama.cpp = 5.65 tok/s</code>，<code>T-MAC = 7.34 tok/s</code>，但 <code>WikiText2 PPL</code> 都是 <strong><code>5.96</code></strong>，<code>WinoGrande</code> 都是 <strong><code>70.8</code></strong>。</li>
+<li class="ml-8">开启 <code>Fast Aggregation</code> 后吞吐可到 <strong><code>8.97 tok/s</code></strong>，但 <code>WikiText2 PPL</code> 变成 <strong><code>6.38</code></strong>、<code>WinoGrande</code> 降到 <strong><code>67.8</code></strong>。</li>
+<li class="ml-8">论文的态度很清楚: <strong>精度安全版本已经能赢，进一步的激进近似只是可选项</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="gpu-npu" class="text-2xl mt-2 font-sans">和 GPU / NPU 比如何</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">在 <code>Jetson AGX Orin</code> 上，T-MAC 的 CPU kernel 在 <code>W1A16</code> 上明显优于 GPU，在 <code>W2A16/W3A16</code> 上也接近 GPU。</li>
+<li class="ml-8">端到端 <code>Llama-2-7B-2bit</code> 上，<code>T-MAC CPU = 15.62 tok/s</code>，<code>llama.cpp CPU = 7.08</code>，<code>llama.cpp GPU = 20.03</code>；虽然吞吐仍落后 GPU，但 <strong>每 token 能耗只有 <code>0.66 J</code></strong>，远低于 GPU 的 <code>1.54 J</code>。</li>
+<li class="ml-8">更激进的是 Table 7: <code>Surface Laptop 7</code> 上 <code>2-bit</code> 能到 <strong><code>31.83 tok/s</code></strong>，约为 NPU 的 <strong><code>3x</code></strong>；<code>OnePlus 12</code> 上相对 Adreno GPU 最多 <strong><code>9.7x</code></strong>。</li>
+<li class="ml-8">但注意这不等于“CPU 全面压过 GPU/NPU”，它成立的前提是 <strong>低 bit + decode-like + memory-bound</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">T-MAC 抓对了问题: <strong>edge low-bit LLM 真正卡的是 dequantization 与 mixed-precision kernel mismatch</strong>。</li>
+<li class="ml-8">论文的关键贡献不是单纯“用 LUT”，而是 <strong>bit-serial rewrite + LUT-centric layout + storage reduction + ISA-aware implementation</strong> 一起闭环。</li>
+<li class="ml-8">如果只记一句话: <strong>它证明了在低比特 decode 这个点上，CPU 可以通过查表范式重新变得有竞争力。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>最强点</strong>: 它不是空谈“lookup 比 multiply 高效”，而是把寄存器驻留、SIMD intrinsic、threadpool 集成这些落地问题都认真处理了。</li>
+<li class="ml-8"><strong>主要局限</strong>: baseline 主要围绕 <code>llama.cpp</code>，对 preprocessing cost 与更新代 CPU kernel 的比较还不够充分。</li>
+<li class="ml-8"><strong>边界条件</strong>: 这条路线更适合 <code>sub-4-bit</code>、<code>decode-dominant</code>、<code>memory-bound</code> 场景；prefill 或更高精度下优势会收缩。</li>
+<li class="ml-8"><strong>后续方向</strong>: 可以继续走向 <code>CPU ISA extension / tiny LUT accelerator</code>，或者和 <code>KV-cache optimization / speculative decoding</code> 做更完整的系统协同。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> helix-asplos-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="helix" class="text-2xl mt-2 font-sans">Helix</h1>
+<h2 id="helix-gpu-llm" class="text-xl mt-2 pb-2 font-sans">Helix：用最大流在异构 GPU 与网络上服务 LLM</h2>
+<p class="font-serif my-1">Yixuan Mei, Yonghao Zhuang, Xupeng Miao, Juncheng Yang, Zhihao Jia, Rashmi Vinayak<br/>
+Carnegie Mellon University<br/>
+ASPLOS 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-03-30</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: 现有 LLM serving 默认 <code>homogeneous GPU + fixed pipeline</code>；到了异构 GPU、跨地域网络后，<strong>切层</strong> 和 <strong>路由</strong> 会互相卡死。</li>
+<li class="ml-8"><strong>方法</strong>: Helix 把 serving 抽象成 <strong>max-flow</strong>，用 <strong>MILP</strong> 离线求 <code>model placement</code>，再用 <strong>per-request pipeline + IWRR</strong> 在线逼近最优流。</li>
+<li class="ml-8"><strong>结果</strong>: 相比 baseline，吞吐最高 <strong><code>3.3x</code></strong>；在 geo-distributed 场景，<code>prompt / decode latency</code> 最高下降 <strong><code>66% / 24%</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么异构是刚需</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">大模型越来越大: 论文给的例子里，<code>LLaMA-3 405B</code> 若按传统同构 serving，需要 <strong><code>68×L4 / 41×A100 / 21×H100</code></strong>。</li>
+<li class="ml-8">现实云平台却越来越异构: GCE 各 region 的 <code>H100 / A100 / L4 / T4</code> 可用性差异很大，<strong>很难在单个 region 拿到足够多同类 GPU</strong>。</li>
+<li class="ml-8">这意味着真正的问题不再是“怎么把模型放到一类 GPU 上”，而是 <strong>如何把不同算力、不同显存、不同网络条件的机器联合起来</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">天真切层为什么错</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-30/Mei_-_2025_-_Helix_Serving_Large_Language_Models_over_Heterogeneous_GPUs_and_Network_via_Max-Flow_images/_page_4_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Figure 1</code> 展示了三种失败方式: <strong>平均切层会拖慢强 GPU</strong>，<strong>只平衡 FLOPs 会把慢链路打爆</strong>。</li>
+<li class="ml-8">关键点是: <code>model partition</code>、<code>device placement</code>、<code>request scheduling</code> 是<strong>强耦合</strong>的，不是三个独立 heuristic。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">核心抽象：最大流</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-30/Mei_-_2025_-_Helix_Serving_Large_Language_Models_over_Heterogeneous_GPUs_and_Network_via_Max-Flow_images/_page_4_Figure_9.jpeg" width="760" style="max-width: 92%; max-height: 300px; object-fit: contain;"/></p>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-30/Mei_-_2025_-_Helix_Serving_Large_Language_Models_over_Heterogeneous_GPUs_and_Network_via_Max-Flow_images/_page_4_Figure_11.jpeg" width="760" style="max-width: 92%; max-height: 210px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">每个 compute node 被拆成 <code>c_i^in -&gt; c_i^out</code>，边容量表示 <strong>token processing throughput</strong>。</li>
+<li class="ml-8">节点间边容量由 <strong>network bandwidth / token or activation size</strong> 决定；于是 <strong>source 到 sink 的 max flow = cluster 的最大 serving throughput</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="milp" class="text-2xl mt-2 font-sans">MILP 怎么落地</h1>
+<p class="font-serif my-1">$$
+\max \sum_i f_{\text{source}, i}
+$$</p>
+<ul class="list-disc font-serif">
+<li class="ml-8">关键不在 “用了 Gurobi”，而在于把 <strong>连接合法性</strong> 线性化进 MILP，同时把规模压到接近 <strong><code>O(nodes + edges)</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="helix" class="text-2xl mt-2 font-sans">Helix 运行时全景</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-30/Mei_-_2025_-_Helix_Serving_Large_Language_Models_over_Heterogeneous_GPUs_and_Network_via_Max-Flow_images/_page_7_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>离线</strong>: coordinator 根据 cluster profile 求一次最优 placement。</li>
+<li class="ml-8"><strong>在线</strong>: 新请求到达后，不走固定 pipeline，而是按当前 topology graph 生成<strong>自己的 pipeline</strong>。</li>
+<li class="ml-8">这让 Helix 真正把“离线最优流”变成了“在线调度策略”，而不是纸面优化。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="pipeline" class="text-2xl mt-2 font-sans">每请求一条 pipeline</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-30/Mei_-_2025_-_Helix_Serving_Large_Language_Models_over_Heterogeneous_GPUs_and_Network_via_Max-Flow_images/_page_8_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">运行时每个 vertex 都挂一个 <code>IWRR</code> scheduler，候选后继节点的权重正比于 <strong>max-flow 解中的边流量</strong>。</li>
+<li class="ml-8">这样请求会按 <code>P(u \rightarrow v) \propto f_{u,v}</code> 的频率分流，避免 fixed pipeline 的<strong>空转</strong>与<strong>局部拥塞</strong>。</li>
+<li class="ml-8">Helix 的一个亮点是: <strong>pipeline 可以交叠</strong>，不要求每条 pipeline 拿一组互斥机器。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="kv-cache" class="text-2xl mt-2 font-sans">别把 KV-cache 撑爆</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">只按流量路由还不够，因为 LLM serving 还有一个动态约束: <strong>每张卡的 KV-cache 容量</strong>。</li>
+<li class="ml-8">Helix 维护各节点的 KV-cache usage estimation，用平均 output length 估计未来占用；超过 high-water mark 的节点会被临时 mask 掉。</li>
+<li class="ml-8">所以它不是盲目追求 max-flow，而是在运行时加了一个 <strong>memory safety guard</strong>，避免 offload 到 host memory 把吞吐拖垮。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">实验怎么做</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>模型</strong>: <code>LLaMA-1 30B</code> 与 <code>LLaMA-2 70B</code>，<code>FP16</code>。</li>
+<li class="ml-8"><strong>真实单集群</strong>: <code>4×A100 + 8×L4 + 12×T4</code>，同 region，<code>10 Gb/s</code> 网络。</li>
+<li class="ml-8"><strong>Geo-distributed 仿真</strong>: 3 个 cluster，跨 region 链路平均 <code>100 Mb/s</code>、<code>50 ms</code>。</li>
+<li class="ml-8"><strong>高异构仿真</strong>: <code>42</code> 个节点、<code>7</code> 种节点类型。</li>
+<li class="ml-8"><strong>Trace</strong>: Azure Conversation dataset，裁剪后 <strong><code>16,657</code></strong> 个请求，平均 input <strong><code>763</code></strong>、output <strong><code>232</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">单集群结果</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-30/Mei_-_2025_-_Helix_Serving_Large_Language_Models_over_Heterogeneous_GPUs_and_Network_via_Max-Flow_images/_page_9_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>LLaMA 30B</code>: 与 <code>SP</code> 接近，但相对 <code>Swarm</code> 的 decode throughput 仍高 <strong><code>2.14x / 2.07x</code></strong>。</li>
+<li class="ml-8"><code>LLaMA 70B</code>: 相对 <code>SP</code> 达 <strong><code>1.86x / 1.69x</code></strong>，相对 <code>Swarm</code> 达 <strong><code>1.94x / 2.00x</code></strong>。模型越大，异构混用越必要。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">跨地域结果</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-30/Mei_-_2025_-_Helix_Serving_Large_Language_Models_over_Heterogeneous_GPUs_and_Network_via_Max-Flow_images/_page_10_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">慢链路出现后，baseline 很容易把 activation 送上拥塞边，因此 <strong>placement + scheduling</strong> 必须联合优化。</li>
+<li class="ml-8"><code>LLaMA 30B</code>: 相对 <code>Swarm</code> 吞吐 <strong><code>2.41x</code></strong>，在线 <code>prompt / decode latency</code> 降 <strong><code>66% / 24%</code></strong>；<code>LLaMA 70B</code> 的 pipeline 深度也比 <code>Swarm</code> 少 <strong><code>28%</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">高异构结果</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-30/Mei_-_2025_-_Helix_Serving_Large_Language_Models_over_Heterogeneous_GPUs_and_Network_via_Max-Flow_images/_page_10_Figure_7.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">在 <code>42-node / 7-type</code> 集群里，<code>V100</code>、<code>T4</code>、<code>2×T4</code> 这类机器根本很难靠自己形成好 pipeline。</li>
+<li class="ml-8">相比 <code>Swarm / SP / SP+</code>，Helix offline throughput 分别是 <strong><code>1.37x / 2.91x / 2.24x</code></strong>，online throughput 分别是 <strong><code>1.48x / 3.29x / 2.54x</code></strong>。</li>
+<li class="ml-8">这说明 Helix 的价值不是“把最快的 GPU 用得更满”，而是 <strong>把原本会被闲置的慢 GPU 也编进全局最优里</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="placement" class="text-2xl mt-2 font-sans">Placement 真因</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-30/Mei_-_2025_-_Helix_Serving_Large_Language_Models_over_Heterogeneous_GPUs_and_Network_via_Max-Flow_images/_page_11_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">这页最有说服力: Helix 不是只报 “higher bars”，而是展示了 <strong>为什么 placement 不同会决定 GPU 是否满载</strong>。</li>
+<li class="ml-8">在单集群 <code>LLaMA 70B</code> 上，Helix 相比 <code>Petals / Swarm</code> 的 offline throughput 分别高 <strong><code>1.23x / 2.10x</code></strong>。</li>
+<li class="ml-8">根因是 Helix 避开了末端 <code>T4 bottleneck</code>，让几乎所有节点都接近 fully-utilized。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="scheduling" class="text-2xl mt-2 font-sans">Scheduling 真因</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-30/Mei_-_2025_-_Helix_Serving_Large_Language_Models_over_Heterogeneous_GPUs_and_Network_via_Max-Flow_images/_page_12_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">即使固定同一个 placement，不同 scheduling 仍会把慢链路打爆。</li>
+<li class="ml-8">在 <code>LLaMA 70B</code> 上，Helix 相比 <code>Swarm / random / shortest-queue</code>，吞吐高 <strong><code>30% / 29% / 19%</code></strong>。</li>
+<li class="ml-8">论文甚至观察到: 某个拥塞点可能由 <strong>3 hops 之外</strong> 的错误调度引起，这说明异构网络下必须要有<strong>全局视角</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">代价与可部署性</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-30/Mei_-_2025_-_Helix_Serving_Large_Language_Models_over_Heterogeneous_GPUs_and_Network_via_Max-Flow_images/_page_13_Figure_2.jpeg" width="760" style="max-width: 92%; max-height: 300px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">工程量不小: <strong><code>1.5k LoC Python + 1.7k LoC C++</code></strong>，另有 <strong><code>14k LoC</code></strong> simulator。</li>
+<li class="ml-8">规划成本偏高: 最大搜索预算 <strong><code>4h</code></strong>；小例子 <strong><code>&lt;5 min</code></strong> 找到最优，但证明最优可能要 <strong><code>1h+</code></strong>。</li>
+<li class="ml-8">降成本主要靠 <code>cluster pruning</code> 与 heuristic warm-start，问题规模可降 <strong><code>36% / 46%</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>最强点</strong>: 这篇论文抓到的不是某个局部 trick，而是 <strong>异构 GPU serving 的本质耦合项</strong>: placement 与 scheduling 必须一起优化。</li>
+<li class="ml-8"><strong>最值得记住的设计</strong>: <code>max-flow abstraction + per-request pipeline</code>，它把离线最优和在线执行真正接上了。</li>
+<li class="ml-8"><strong>主要保留意见</strong>: 很多 hardest case 依赖 simulator；优化目标也更偏 <strong>throughput-optimal</strong>，而不是 <code>P99 TTFT</code> 或多租户公平性。</li>
+<li class="ml-8"><strong>后续方向</strong>: 把 Helix 和 <code>prefill/decode disaggregation</code>、<code>speculative decoding</code>、甚至 <code>cost / carbon-aware objective</code> 结合，会更接近生产系统。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>
