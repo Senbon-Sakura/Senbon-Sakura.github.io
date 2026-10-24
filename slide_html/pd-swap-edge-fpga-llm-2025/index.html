@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> pd-swap-edge-fpga-llm-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="pd-swap" class="text-2xl mt-2 font-sans">PD-Swap</h1>
+<h2 id="prefill-decode-logic-swapping-for-end-to-end-llm-inference-on-edge-fpgas" class="text-xl mt-2 pb-2 font-sans">Prefill-Decode Logic Swapping for End-to-End LLM Inference on Edge FPGAs</h2>
+<p class="font-serif my-1">Yifan Zhang, Zhiheng Chen, Ye Qiao, Sitao Huang<br/>
+University of California, Irvine<br/>
+2025 preprint<br/>
+Presenter: wzw<br/>
+Date: 2026-03-24</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>核心瓶颈</strong>: <code>prefill</code> 是 <strong>compute-bound</strong>，<code>decode</code> 是 <strong>memory-bound</strong>，static attention 很难兼顾两者。</li>
+<li class="ml-8"><strong>核心创新</strong>: 用 <code>DPR</code> 在运行时交换 attention logic，保留 <code>TLMM + weight buffering</code> 为 static。</li>
+<li class="ml-8"><strong>核心结果</strong>: <strong>27.8 token/s</strong>，对 TeLLMe 提升 <strong>1.11x -&gt; 2.02x</strong>，<code>768-token TTFT</code> 从 <strong>11.10 s</strong> 降到 <strong>8.80 s</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">背景</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Prefill</code>: 处理整段 prompt，attention 更像 <code>matrix-matrix</code>，主要吃 <code>compute / LUT / URAM</code>。</li>
+<li class="ml-8"><code>Decode</code>: 一次一个 token，attention 退化成 <code>vector-matrix</code>，主要吃 <code>KV-cache DDR bandwidth</code>。</li>
+<li class="ml-8">Edge FPGA 上片上资源和 DDR 带宽都紧，这种不对称性会被进一步放大。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="static" class="text-2xl mt-2 font-sans">Static 设计的问题</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>逻辑重复</strong>: prefill/decode attention 都要常驻，buffer 和 control 被重复实例化。</li>
+<li class="ml-8"><strong>资源挤占</strong>: attention 吃掉 LUT / URAM 后，<code>TLMM</code> 和 on-chip weights 更难做大。</li>
+<li class="ml-8"><strong>长上下文退化</strong>: context 越长，decode 越快撞上 bandwidth wall。</li>
+</ul>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/Zhang_-_2025_-_PD-Swap_Prefill-Decode_Logic_Swapping_for_End-to-End_LLM_Inference_on_Edge_FPGAs_via_Dynamic_Partia_images/_page_1_Figure_2.jpeg" width="860"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Prefill attention</code> 的复杂度近似随序列长度 <strong>quadratic</strong> 增长。</li>
+<li class="ml-8"><code>Decode attention</code> 的计算不大，但 <code>KV-cache</code> 流量随历史长度线性增长。</li>
+<li class="ml-8">真正需要 phase-specialization 的是 attention，不是共享的 linear / element-wise 逻辑。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">高层架构</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/Zhang_-_2025_-_PD-Swap_Prefill-Decode_Logic_Swapping_for_End-to-End_LLM_Inference_on_Edge_FPGAs_via_Dynamic_Partia_images/_page_2_Figure_10.jpeg" width="900"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Static region</strong>: <code>Table Lookup Linear</code>, <code>RMSNorm</code>, 其他 element-wise operators。</li>
+<li class="ml-8"><strong>Dynamic region / RP</strong>: attention accelerator。</li>
+<li class="ml-8"><strong>两个 RM</strong>: <code>Prefill RM</code> 偏 compute-heavy，<code>Decode RM</code> 偏 KV-cache-centric。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1-dpr-attention" class="text-2xl mt-2 font-sans">机制 1: DPR 切换 Attention</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">设计时把 FPGA 划成 <code>static region + reconfigurable partition (RP)</code>。</li>
+<li class="ml-8">运行时先加载 <code>prefill attention RM</code>，进入生成阶段后切到 <code>decode attention RM</code>。</li>
+<li class="ml-8"><code>PS</code> 通过 <code>PCAP</code> 下发 partial bitstream，只重配置 dynamic region。</li>
+<li class="ml-8"><strong>收益</strong>: 同一块面积在不同时刻服务不同 bottleneck。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2-tlmm" class="text-2xl mt-2 font-sans">机制 2: 共享 TLMM</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/Zhang_-_2025_-_PD-Swap_Prefill-Decode_Logic_Swapping_for_End-to-End_LLM_Inference_on_Edge_FPGAs_via_Dynamic_Partia_images/_page_3_Figure_2.jpeg" width="900"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Linear projections</code> 在两个阶段都用 <code>TLMM</code>，权重常驻片上。</li>
+<li class="ml-8">这样避免了反复 DDR weight fetch，也减少了为 dataflow 特化而重做 linear pipeline 的必要。</li>
+<li class="ml-8">所以 swap 的边界被压缩到了 attention 子系统。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="3-prefill-decode" class="text-2xl mt-2 font-sans">机制 3: Prefill / Decode 数据流分离</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Prefill attention</code>: 类 <code>FlashAttention</code> block processing，重点是 <strong>Q reuse</strong> 和 token-level parallelism。</li>
+<li class="ml-8"><code>Decode attention</code>: <code>L=1</code>，没有 Q reuse，退化成面向 <code>K/V cache</code> 的 memory-bound 流程。</li>
+<li class="ml-8">论文的核心不是新 attention 算法，而是把两种数据流映射到不同硬件形态。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="request" class="text-2xl mt-2 font-sans">Request 生命周期</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Step 1: prompt 进入，static <code>TLMM</code> 做 projection，dynamic region 里是 <code>prefill attention RM</code>。</li>
+<li class="ml-8">Step 2: prefill attention 通过 block-wise softmax 和 reverse scheduling 提升 <code>Q</code> 复用。</li>
+<li class="ml-8">Step 3: 进入生成阶段前，PS 触发 <code>partial reconfiguration</code>，换成 <code>decode attention RM</code>。</li>
+<li class="ml-8">Step 4: 后续 token 走 <code>KV-cache-centric</code> decode 数据流，重点拉高 DDR 有效带宽。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="4-decode-port" class="text-2xl mt-2 font-sans">机制 4: Decode 侧 Port 优化</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">KV260 有 <strong>4 个 HP DDR ports</strong>。</li>
+<li class="ml-8">baseline 在 prefill / decode 中都沿用统一映射，decode 阶段会出现严重失衡。</li>
+<li class="ml-8">PD-Swap 改成 <strong>2 ports 给 K，2 ports 给 V</strong>。</li>
+<li class="ml-8"><code>Q</code> 直接旁路进片上 buffer，输出先本地缓存再回写。</li>
+<li class="ml-8">结果是 decode 侧的有效 KV 带宽提升接近 <strong>2x</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="5-roofline" class="text-2xl mt-2 font-sans">机制 5: Roofline 判断方向</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/Zhang_-_2025_-_PD-Swap_Prefill-Decode_Logic_Swapping_for_End-to-End_LLM_Inference_on_Edge_FPGAs_via_Dynamic_Partia_images/_page_3_Figure_12.jpeg" width="860"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Prefill attention</code> 更像 compute-bound kernel。</li>
+<li class="ml-8"><code>Decode attention</code> 更像 memory-bound kernel。</li>
+<li class="ml-8">roofline 的作用是指导资源优先让给哪一侧，而不是事后解释结果。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="6" class="text-2xl mt-2 font-sans">机制 6: 自动化实现流</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/Zhang_-_2025_-_PD-Swap_Prefill-Decode_Logic_Swapping_for_End-to-End_LLM_Inference_on_Edge_FPGAs_via_Dynamic_Partia_images/_page_3_Figure_14.jpeg" width="760"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">DSE 先选 <code>RP size / PE count / parallelism</code>。</li>
+<li class="ml-8">再生成参数化 HLS IP，做 module-level synthesis。</li>
+<li class="ml-8">如果 full-system P&amp;R 失败，就回退并降低 dynamic region 并行度。</li>
+<li class="ml-8"><strong>重点</strong>: 性能搜索和可实现性被放进同一个闭环。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">资源模型</h1>
+<p class="font-serif my-1">$$r_{proj} + \max(r_{atten}^{pre}, r_{atten}^{dec}) \le R_{total}$$</p>
+<ul class="list-disc font-serif">
+<li class="ml-8">dynamic region 同一时刻只需要容纳一个 attention RM。</li>
+<li class="ml-8">相比 static 同驻两套 attention，资源预算从“求和”变成“取最大值”。</li>
+<li class="ml-8">这也是后面 <code>Equivalent Total 106%</code> 成立的前提。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">延迟模型</h1>
+<p class="font-serif my-1">$$T_{pre} = \frac{P_{proj}L}{f_{pre}(r_{proj})} + \frac{P_{atten}L^2}{g_{pre}(r_{atten}^{pre})} + T_{weights}$$</p>
+<p class="font-serif my-1">$$T_{dec} = \frac{D_{proj}}{f_{dec}(r_{proj})} + \frac{D_{atten}L}{g_{dec}(r_{atten}^{dec})} + T_{weights}$$</p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>prefill</code> 随 <code>L^2</code> 变坏，更该优化 compute。</li>
+<li class="ml-8"><code>decode</code> 随 <code>L</code> 受带宽支配，更该优化 KV-cache access。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="runtime-overlap" class="text-2xl mt-2 font-sans">Runtime Overlap</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/Zhang_-_2025_-_PD-Swap_Prefill-Decode_Logic_Swapping_for_End-to-End_LLM_Inference_on_Edge_FPGAs_via_Dynamic_Partia_images/_page_5_Figure_4.jpeg" width="900"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">最后一层 <code>prefill attention</code> 一结束，attention 模块已经可以被换出。</li>
+<li class="ml-8">后面还有 projection + FFN 继续执行，所以 DPR 可以提前启动。</li>
+<li class="ml-8">论文报告:
+  <code>reconfiguration ≈ 45 ms</code>，
+  剩余 projection + FFN <code>≈ 31 ms @ 128 tokens</code>，
+  有效重配置开销下降约 <strong>75%</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">实验设置</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Device</strong>: AMD Kria <code>KV260</code></li>
+<li class="ml-8"><strong>Model</strong>: <code>BitNet 0.73B</code></li>
+<li class="ml-8"><strong>Toolchain</strong>: <code>Vitis HLS 2024.1</code> + <code>Vivado 2024.1</code></li>
+<li class="ml-8"><strong>Baseline</strong>: <code>TeLLMe</code></li>
+<li class="ml-8"><strong>指标</strong>: <code>decode throughput</code>、<code>TTFT / prefill time</code>、resource breakdown</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">核心性能</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-23/Zhang_-_2025_-_PD-Swap_Prefill-Decode_Logic_Swapping_for_End-to-End_LLM_Inference_on_Edge_FPGAs_via_Dynamic_Partia_images/_page_5_Figure_6.jpeg" width="920"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Decode throughput</strong>: 相对 TeLLMe 的提升从 <strong>1.11x @ 64 tokens</strong> 增长到 <strong>2.02x @ 2048 tokens</strong>。</li>
+<li class="ml-8"><strong>TTFT / Prefill</strong>: <code>768 tokens</code> 从 <strong>11.10 s</strong> 降到 <strong>8.80 s</strong>，大约 <strong>20%-25%</strong> 改善。</li>
+<li class="ml-8"><code>2048-token</code> 时 PD-Swap 还能保持 <strong>&gt;10 token/s</strong>，TeLLMe 约 <strong>5 token/s</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么长上下文收益更大</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">短上下文时，DPR 和 decode bandwidth 优势还没完全放大。</li>
+<li class="ml-8">长上下文时，static baseline 被 KV-cache traffic 拖垮，PD-Swap 的 decode RM 更占优。</li>
+<li class="ml-8">所以这篇工作的价值主要在 <strong>long-context decode</strong>，不是所有长度都同幅收益。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">资源开销</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>PD-Swap 实际资源</strong>:
+  <code>102K LUT</code>, <code>176K FF</code>, <code>124.5 BRAM</code>, <code>62 URAM</code>, <code>750 DSP</code></li>
+<li class="ml-8"><strong>功耗</strong>: <strong>4.9 W</strong></li>
+<li class="ml-8"><strong>Equivalent Total</strong>: <strong>106% LUT</strong></li>
+<li class="ml-8">这说明如果让两套 attention 同时常驻，设计事实上会塞不下。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">能效与对比</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Decode throughput</strong>: <strong>27.8 token/s</strong></li>
+<li class="ml-8"><strong>Decode energy efficiency</strong>: <strong>5.67 token/J</strong></li>
+<li class="ml-8">与 TeLLMe 对比:
+  <code>25 -&gt; 27.8 token/s</code>
+  <code>5.2 -&gt; 5.67 token/J</code></li>
+<li class="ml-8">“without extra area cost” 更准确的理解是:
+  避免双 attention 同驻的面积爆炸，而不是完全零代价。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">论文总结</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">PD-Swap 把 <code>prefill/decode asymmetry</code> 从调度问题提升成了<strong>运行时硬件形态切换问题</strong>。</li>
+<li class="ml-8">真正被 swap 的只有 attention，shared <code>TLMM</code> 和线性层保持 static。</li>
+<li class="ml-8">最终在 KV260 上做到了 <strong>27.8 token/s</strong>，且收益随 context length 增长而增大。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价: 亮点</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Insight 很干净</strong>: prefill 和 decode 的 roofline 完全不同。</li>
+<li class="ml-8"><strong>架构切分合理</strong>: shared <code>TLMM / projection</code> 留在 static，attention 放到 RP。</li>
+<li class="ml-8"><strong>工程味很强</strong>: 不只讲 DPR，还补了 <code>HP-port remapping</code>、<code>DSE</code>、<code>overlapped reconfiguration</code>。</li>
+<li class="ml-8"><strong>对比可信</strong>: 主 baseline 是同模型、同 FPGA 的 TeLLMe。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价: 局限</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>模型规模有限</strong>: 只验证了 <code>BitNet 0.73B</code>。</li>
+<li class="ml-8"><strong>DPR 开销仍然存在</strong>: 短 prompt / 高频小请求场景下仍可能敏感。</li>
+<li class="ml-8"><strong>面积表述偏乐观</strong>: 实现资源并不低于 TeLLMe。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="future-work" class="text-2xl mt-2 font-sans">Future Work</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">多级 <code>context-aware reconfiguration</code></li>
+<li class="ml-8">更细粒度的 <code>KV-cache hierarchy</code></li>
+<li class="ml-8">在更大模型和更多 FPGA 平台上验证</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> pccheck-asplos-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="pccheck" class="text-2xl mt-2 font-sans">PCcheck</h1>
+<h2 id="pccheck-ml" class="text-xl mt-2 pb-2 font-sans">PCcheck：面向 ML 训练的持久化并发检查点</h2>
+<p class="font-serif my-1">Foteini Strati, Michal Friedman, Ana Klimovic<br/>
+ETH Zurich<br/>
+ASPLOS 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-03-27</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: 现有 DNN checkpointing 系统基本都只允许 <strong>一个 in-flight checkpoint</strong>，高频 checkpoint 时训练会被前一次持久化拖住。</li>
+<li class="ml-8"><strong>方法</strong>: PCcheck 用 <strong>multiple concurrent checkpoints + GPU-&gt;DRAM-&gt;SSD/PMEM pipeline + multi-thread persistence</strong>，把 snapshot 与持久化解耦。</li>
+<li class="ml-8"><strong>结果</strong>: 能把 checkpoint 频率推到 <strong>每 <code>10</code> iterations</strong> 仍仅约 <strong><code>3%</code> overhead</strong>，在 spot-VM preemption trace 下 goodput 最多高 <strong><code>2.86x</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么这事重要</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">大模型训练动辄跑 <strong>数天到数周</strong>，硬件规模越大，failure / preemption 概率越高。</li>
+<li class="ml-8">文中引用的生产统计很激进: <strong>50%</strong> 的 ML jobs 在 <strong>16 分钟</strong> 内遇到 failure；另一个多租户 GPU 集群的 mean time between failures 约 <strong>45 分钟</strong>。</li>
+<li class="ml-8">spot VM 又把问题放大了: 成本虽可低 <strong><code>60%~90%</code></strong>，但云上会频繁 preempt；作者引用的 64-GPU cluster 在 24 小时内可遇到 <strong>127 次</strong> preemption。</li>
+<li class="ml-8">所以真正的问题不是“要不要 checkpoint”，而是 <strong>能否把 checkpoint 做到足够频繁且不明显拖慢训练</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">旧方案卡在哪里</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Strati_-_2025_-_PCcheck_Persistent_Concurrent_Checkpointing_for_ML_images/_page_1_Figure_20.jpeg" width="820" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Figure 1 的信号很直接: 对 BLOOM-7B，CheckFreq / Gemini 在 <strong><code>&lt;=50</code> iterations</strong> checkpoint 时仍有 <strong><code>&gt;10%</code></strong> overhead。</li>
+<li class="ml-8">根因不是没有 overlap，而是它们都只有 <strong>single active checkpoint</strong>: 下一次 snapshot 必须等前一次 persist 结束。</li>
+<li class="ml-8">这意味着 checkpoint 越频繁，GPU 越容易在“等前一个 checkpoint 落盘”上空转。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Strati_-_2025_-_PCcheck_Persistent_Concurrent_Checkpointing_for_ML_images/_page_2_Figure_7.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">真正目标函数不是裸 throughput，而是 <strong>goodput = 有效训练进度 / 总时间</strong>。</li>
+<li class="ml-8">checkpoint 太稀会多做 rollback，checkpoint 太密又会把训练时间吃掉。</li>
+<li class="ml-8">Figure 2 说明 sweet spot 恰恰落在 <strong><code>10~25</code> iterations</strong>，所以系统必须支持 <strong>fine-grained checkpointing</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="pccheck" class="text-2xl mt-2 font-sans">PCcheck 全景图</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Strati_-_2025_-_PCcheck_Persistent_Concurrent_Checkpointing_for_ML_images/_page_4_Figure_10.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Orchestrator</strong>: 决定何时发起 checkpoint，分配 DRAM buffer，并触发 GPU copy engines。</li>
+<li class="ml-8"><strong>Persistent Manager</strong>: 管理 mmaped checkpoint 空间，用多个 writer threads 把 DRAM 数据写到 SSD / PMEM。</li>
+<li class="ml-8"><strong>核心变化</strong>: 不再把“下一次 checkpoint 开始”绑定到“上一次 checkpoint 完全持久化结束”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="checkpoint" class="text-2xl mt-2 font-sans">一次 checkpoint 如何流动</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Strati_-_2025_-_PCcheck_Persistent_Concurrent_Checkpointing_for_ML_images/_page_5_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>U1</code> 后，GPU 立即把 state 拷到 DRAM 形成 <code>C1</code>，训练 meanwhile 继续跑 <code>T2</code>。</li>
+<li class="ml-8">当第二次 checkpoint 到来时，<strong>即使 <code>P1</code> 还没完成</strong>，PCcheck 也允许 <code>C2</code> 继续开始。</li>
+<li class="ml-8">核心变化就是: <strong>checkpoint 之间并发，而不是串行排队</strong>；但作者也承认 update 阶段仍可能留下小 stall。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1-pipeline" class="text-2xl mt-2 font-sans">机制1：再加 pipeline</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Strati_-_2025_-_PCcheck_Persistent_Concurrent_Checkpointing_for_ML_images/_page_5_Figure_4.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">PCcheck 不只是允许多个 checkpoint 并发，还把每个 checkpoint <strong>切成 chunks</strong>。</li>
+<li class="ml-8">于是可以在 <code>chunk i</code> 已经开始持久化时，继续从 GPU 拷 <code>chunk i+1</code>。</li>
+<li class="ml-8">chunk 已经落盘后，其 DRAM buffer 还能被后续 checkpoint 复用，因此 host memory 不必线性膨胀。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">如何选频率</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">tuning rule: <code>$f \ge \frac{T_w}{N \cdot q \cdot t}$</code></li>
+<li class="ml-8"><code>T_w</code>: 最坏写入时间；<code>N</code>: 并发度；<code>q</code>: slowdown 预算；<code>t</code>: iteration time。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">资源账单怎么付</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">方案</th>
+<th style="text-align: left;">GPU Mem</th>
+<th style="text-align: left;">DRAM</th>
+<th style="text-align: left;">Storage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">CheckFreq</td>
+<td style="text-align: left;"><code>m</code></td>
+<td style="text-align: left;"><code>m</code></td>
+<td style="text-align: left;"><code>2m</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">GPM</td>
+<td style="text-align: left;"><code>m</code></td>
+<td style="text-align: left;"><code>0</code></td>
+<td style="text-align: left;"><code>2m</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Gemini</td>
+<td style="text-align: left;"><code>m+buffer</code></td>
+<td style="text-align: left;"><code>m</code></td>
+<td style="text-align: left;"><code>0</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">PCcheck</td>
+<td style="text-align: left;"><code>m</code></td>
+<td style="text-align: left;"><code>m~2m</code></td>
+<td style="text-align: left;"><code>(N+1)m</code></td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">PCcheck 的本质 tradeoff 很坦白: <strong>用更多 DRAM / persistent space，换更少训练 stall</strong>。</li>
+<li class="ml-8">数据路径上作者做了很务实的优化: <code>GPU copy engine + pinned memory + DDIO</code>，PMEM 侧用 <code>non-temporal store + sfence</code>。</li>
+<li class="ml-8">元数据侧则用 <code>CHECK_ADDR + counter + CAS</code> 保证: <strong>任何时刻至少有一个合法 checkpoint</strong>。</li>
+<li class="ml-8">这也解释了为什么它不是“纯软件调度小技巧”，而是 <strong>host memory / I/O path aware</strong> 的系统设计。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>SSD 平台</strong>: Google Cloud <code>a2-highgpu-1g</code>，<code>A100-40GB + PCIe3x16 + 85GB DRAM + 1TB SSD</code>。</li>
+<li class="ml-8"><strong>PMEM 平台</strong>: <code>Titan RTX-24GB + Intel Optane PMEM</code>，两机型分别评估 SSD / PMEM 场景。</li>
+<li class="ml-8"><strong>模型</strong>: <code>VGG16, TransformerXL, BERT, OPT-1.3B, OPT-2.7B, BLOOM-7B</code>，checkpoint 大小从 <strong><code>1.1GB</code> 到 <code>108GB</code></strong>。</li>
+<li class="ml-8"><strong>Baselines</strong>: <code>CheckFreq</code>, <code>GPM</code>, <code>Gemini</code>，其中 Gemini 由作者按论文描述自行实现。</li>
+<li class="ml-8"><strong>评价指标</strong>: throughput、recovery time、goodput、microbenchmark、sensitivity study。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="gpu" class="text-2xl mt-2 font-sans">主结果：单 GPU</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Strati_-_2025_-_PCcheck_Persistent_Concurrent_Checkpointing_for_ML_images/_page_10_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">单 GPU 下，CheckFreq 在 VGG16 上 checkpoint every iteration 时最坏可到 <strong><code>57x</code> slowdown</strong>。</li>
+<li class="ml-8">对 <code>OPT-1.3B</code>，every <code>50</code> iterations 时，PCcheck 为 <strong><code>1.02x</code></strong>，而 GPM / CheckFreq 约 <strong><code>1.9x / 1.17x</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">主结果：分布式</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">多 GPU 下，Gemini 的思路是把 state 发到远端机器内存，但它同样只有 <strong>single active checkpoint</strong>。</li>
+<li class="ml-8">作者在 <code>a2-highgpu-1g</code> 上测得 inter-machine bandwidth 约 <strong><code>15 Gbps</code></strong>，不足以把网络 copy 完全藏进训练过程。</li>
+<li class="ml-8">对 <code>OPT-2.7B</code> / <code>BLOOM-7B</code>，Gemini slowdown 为 <strong><code>1.62x~1.06x</code></strong> / <strong><code>1.65x~1.08x</code></strong>，而 PCcheck 压到 <strong><code>&lt;1.05x</code></strong> / <strong><code>&lt;1.02x</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="recovery-goodput" class="text-2xl mt-2 font-sans">真正该看：recovery 与 goodput</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Strati_-_2025_-_PCcheck_Persistent_Concurrent_Checkpointing_for_ML_images/_page_11_Figure_2.jpeg" width="780" style="max-width: 92%; max-height: 340px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Spot trace 下，最佳 checkpoint interval 落在 <strong><code>10~25</code> iterations</strong>，这正是 prior systems 最难承受的频段。</li>
+<li class="ml-8"><code>OPT-1.3B</code> 的例子里，every <code>10</code> iterations 时 PCcheck 的 goodput 比 CheckFreq 高 <strong><code>1.77x</code></strong>。</li>
+<li class="ml-8">看所有频点，PCcheck 对 <code>GPM / CheckFreq / Gemini</code> 的 goodput 最多分别高 <strong><code>1.75x / 2.86x / 2.75x</code></strong>，说明 rollback 增量仍小于吞吐收益。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="pmem" class="text-2xl mt-2 font-sans">次级结果：PMEM 也成立</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Strati_-_2025_-_PCcheck_Persistent_Concurrent_Checkpointing_for_ML_images/_page_12_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">PMEM 带宽更高，因此所有方案都比 SSD 轻松，但 PCcheck 仍始终最好。</li>
+<li class="ml-8">对 BERT，在<strong>相同 overhead</strong> 下，PCcheck 可把 interval 从 <code>100</code> 压到 <code>10</code> iterations，recovery time 相应降 <strong><code>10x</code></strong>。</li>
+<li class="ml-8">microbenchmark 里，PCcheck 的 per-checkpoint time 相对 CheckFreq / GPM 最多快 <strong><code>1.9x</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">敏感性：并发度不用很大</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Strati_-_2025_-_PCcheck_Persistent_Concurrent_Checkpointing_for_ML_images/_page_12_Figure_12.jpeg" width="820" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Figure 12 表明对 VGG16，<strong>多个 concurrent checkpoints 明显优于单 checkpoint</strong>。</li>
+<li class="ml-8">但作者也发现 <strong><code>2~4</code> 个</strong>通常就够了，再多会开始撞上 SSD bandwidth saturation。</li>
+<li class="ml-8">这很关键: PCcheck 的收益不是靠“无限堆并发”，而是靠 <strong>适度并发 + 正确的数据路径设计</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">PCcheck 抓住的根因很准: 高 checkpoint overhead 的本质是 <strong>single in-flight checkpoint 导致的串行阻塞</strong>。</li>
+<li class="ml-8">它的核心贡献是把 checkpoint 变成 <strong>可并发、可 pipeline、可 tuning</strong> 的系统路径，而不是一个简单 async save API。</li>
+<li class="ml-8">在 failure-heavy 的现实环境里，paper 真正改善的是 <strong>goodput 与 recovery behavior</strong>，而不只是实验室里的裸 throughput。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>最强点</strong>: 论文没有只讲“更快写盘”，而是把 <strong>吞吐、恢复时间、goodput、配置规则、系统实现</strong> 连成闭环。</li>
+<li class="ml-8"><strong>主要局限</strong>: 分布式一致性机制仍比较轻量，作者自己也承认还在继续增强其 robustness；Gemini baseline 也是作者自行复现，公平性有一点风险。</li>
+<li class="ml-8"><strong>工程边界</strong>: PCcheck 用空间换时间，<code>(N+1)m</code> 的 storage footprint 对 <code>108GB</code> checkpoint 级别的模型并不便宜。</li>
+<li class="ml-8"><strong>后续方向</strong>: 一个自然延伸是把 profiling-based tuning 做成 <strong>online controller</strong>，再和 preemption prediction / cluster scheduler 联动。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>
