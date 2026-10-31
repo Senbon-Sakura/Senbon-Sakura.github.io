@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> early-termination-hdc-asplos-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="early-termination-for-hyperdimensional-computing-using-inferential-statistics" class="text-2xl mt-2 font-sans">Early Termination for Hyperdimensional Computing Using Inferential Statistics</h1>
+<h2 id="hdc" class="text-xl mt-2 pb-2 font-sans">用推断统计实现 HDC 早停</h2>
+<p class="font-serif my-1">Pu (Luke) Yi, Yifan Yang, Chae Young Lee, Sara Achour<br/>
+Stanford University<br/>
+ASPLOS 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-04-27</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: 现有 HDC 早停靠 heuristic threshold，常常<strong>停早或停晚</strong>。</li>
+<li class="ml-8"><strong>方法</strong>: OMEN 用 <strong>统计检验</strong> 判断当前 winner 是否已足够可靠。</li>
+<li class="ml-8"><strong>结果</strong>: <strong>19 个 benchmark</strong> 上最高 <strong><code>12.18x</code></strong> speedup。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="hdc" class="text-2xl mt-2 font-sans">为什么 HDC 适合早停</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">HDC 的 encoding 与 distance computation 都是 <strong>element-wise / streaming</strong> 的。</li>
+<li class="ml-8">只处理前 $n$ 个维度时，系统已经拿到了一个 <strong>前缀距离估计</strong>。</li>
+<li class="ml-8">所以难点不是“能否早停”，而是 <strong>何时停才不会误判</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">现有方法卡在哪里</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">过去方法通常用 <code>distance gap</code> 或 <code>absolute similarity</code> 作为 confidence metric，本质仍是 <strong>经验阈值</strong>。</li>
+<li class="ml-8">这些方法没有统计保证:</li>
+<li class="ml-8">easy input 上可能 <strong>算太多</strong></li>
+<li class="ml-8">hard input 上可能 <strong>停太早</strong></li>
+<li class="ml-8">对 edge inference 来说，主要成本就在 encoder 与 distance accumulation，这种不稳定直接变成 <strong>latency / energy 浪费</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察：距离可以看成采样</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">fully distributed 意味着，每个 element distance 都像同一分布中的 sample。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">采样视角的核心式子</h1>
+<p class="font-serif my-1">$$
+Z_n(D) = \frac{1}{n}\sum_{i=1}^{n} D[i]
+$$</p>
+<ul class="list-disc font-serif">
+<li class="ml-8">前缀距离因此是 <strong>sample mean estimator</strong>，早停问题也就能写成 <strong>hypothesis testing</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="hdc" class="text-2xl mt-2 font-sans">HDC 分类器长什么样</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/Yi_-_2025_-_Early_Termination_for_Hyperdimensional_Computing_Using_Inferential_Statistics_images/_page_2_Figure_13.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Figure 1</code> 给的是 language classifier: input 先被 encoder 映射成 query hypervector，再和多个 class hypervector 比距离。</li>
+<li class="ml-8">论文的切入点并不是改模型结构，而是在 <strong>inference loop 外面加一个动态停止控制器</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="omen" class="text-2xl mt-2 font-sans">OMEN 的高层流程</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/Yi_-_2025_-_Early_Termination_for_Hyperdimensional_Computing_Using_Inferential_Statistics_images/_page_3_Figure_10.jpeg" width="820" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">在若干 termination points 上，OMEN 检查当前 winner 是否对所有其他类别都已“显著更优”。</li>
+<li class="ml-8">若检验通过就提前返回；否则继续处理更多维度。<strong>Q2</strong> 这类 easy input 只需处理 <strong>20.4%</strong> 维度即可停下。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">一个请求如何走完整个机制</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">encoder 逐维产生 query hypervector，并持续累计各 class 的 running distance。</li>
+<li class="ml-8">到达 termination point 后，取 <code>cand = argmin(dist)</code>，并与其余类别逐一做显著性检验。</li>
+<li class="ml-8">只有当所有 null hypotheses 都被拒绝时才提前结束；否则继续处理更多维度。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="wald-test" class="text-2xl mt-2 font-sans">机制一：Wald test</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">先定义 test statistic: <code>S_n = sqrt(n) * gap / sqrt(CD_n - gap^2)</code></li>
+<li class="ml-8">再把它映射成 <code>p-value</code>: <code>W_n = 1 - Phi(S_n)</code></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="wald-test" class="text-2xl mt-2 font-sans">Wald test 在做什么</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">比较的是两个类别距离的 <strong>expected distance</strong>，不是简单看当前谁更小。</li>
+<li class="ml-8">$CD_n$ 处理 paired comparison，因为多个类别与同一个 query 比较时并 <strong>不独立</strong>。</li>
+<li class="ml-8">对 BSC/Hamming distance，$CD_n$ 可 <strong>离线预计算</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="holm-bonferroni" class="text-2xl mt-2 font-sans">机制二：Holm-Bonferroni</h1>
+<p class="font-serif my-1">$$
+p_i &lt; \frac{\alpha}{j}
+$$</p>
+<ul class="list-disc font-serif">
+<li class="ml-8">它把多个比较的总体误判概率压回 $\alpha$。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么这一步很关键</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">没有它，多个 pairwise test 的错误率会累加，confidence 就不再可信。</li>
+<li class="ml-8">有了它，OMEN 才能说: <strong>early exit 引入的额外 estimation error 有显式上界</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="iid-exchangeability" class="text-2xl mt-2 font-sans">理论扩展：从 iid 到 exchangeability</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 vanilla HDC，作者可把元素视作 <code>iid</code>；但对 <code>OnlineHD / LeHDC / LDC</code> 这类 learned hypervector，独立性往往被破坏。</li>
+<li class="ml-8">论文进一步证明: 这些训练算法虽然不一定保留 iid，但会保留更弱的统计对称性 <strong>exchangeability</strong>。</li>
+<li class="ml-8">这一步很关键，因为它把 OMEN 从“只适用于简单 HDC”扩展到 <strong>更现实的 learned classifier</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">部署代价并不高</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Baseline</th>
+<th style="text-align: center;">Encode</th>
+<th style="text-align: center;">Distance</th>
+<th style="text-align: center;">Stat Tests</th>
+<th style="text-align: center;">Total</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Unoptimized</td>
+<td style="text-align: center;">243.40</td>
+<td style="text-align: center;">0.10</td>
+<td style="text-align: center;">-</td>
+<td style="text-align: center;">243.50</td>
+</tr>
+<tr>
+<td style="text-align: left;">Omen $\alpha=5\%$</td>
+<td style="text-align: center;">77.67</td>
+<td style="text-align: center;">0.04</td>
+<td style="text-align: center;">0.59</td>
+<td style="text-align: center;">78.30</td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">在 <code>OHD-BSC-ucihar</code> 上，statistical tests 只占总时延约 <strong><code>0.76%</code></strong>。</li>
+<li class="ml-8">论文不需要改 HDC training pipeline，也 <strong>不要求新硬件 block</strong>；主要额外代价是少量数值计算与 termination bookkeeping。</li>
+<li class="ml-8">真正的弱点出现在 <code>LDC-BSC, N=256</code>：维度太短、且统计检验含 floating-point ops，优化空间被明显压缩。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">实验方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>任务</strong>: <code>lang / ucihar / isolet / mnist</code> 四类 edge-friendly classification。</li>
+<li class="ml-8"><strong>模型</strong>: <code>OnlineHD / LeHDC / LDC</code>，再配合 <code>BSC / MAP</code> 变体，总计 <strong>19 benchmarks</strong>。</li>
+<li class="ml-8"><strong>HV 大小</strong>: <code>10048 / 5056 / 256</code>；termination 配置分别为 <code>512/64</code>、<code>512/64</code>、<code>16/4</code>。</li>
+<li class="ml-8"><strong>平台</strong>: 能装下的模型在 <code>STM32U585AI MCU</code> 上跑；大 MAP 模型转到桌面 <code>i9-13900K</code> 单线程执行。</li>
+<li class="ml-8"><strong>对比</strong>: <code>DIFF / ABSOLUTE / MEAN / Smaller Vector</code>，覆盖主流 heuristic family。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">主结果：性能提升很扎实</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/Yi_-_2025_-_Early_Termination_for_Hyperdimensional_Computing_Using_Inferential_Statistics_images/_page_12_Figure_4.jpeg" width="820" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">$\alpha=1\%$: <strong><code>1.08-7.21x</code></strong></li>
+<li class="ml-8">$\alpha=5\%$: <strong><code>1.24-10.04x</code></strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">主结果：更激进时更快</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">$\alpha=10\%$: <strong><code>1.41-12.18x</code></strong></li>
+<li class="ml-8">大多数 OMEN 点落在 Pareto frontier 上，说明收益不是靠“粗暴牺牲精度”换来的。</li>
+<li class="ml-8">真正的弱项集中在 <code>LDC-BSC</code>，因为 <code>N=256</code> 太短，能裁剪的冗余本来就少。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">精度也基本守住了</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">$\alpha=1\%$ 时，accuracy loss 只有 <strong><code>0.0-0.6%</code></strong>；其中 <strong>13 个 benchmark</strong> 是 <code>0%</code> loss。</li>
+<li class="ml-8">$\alpha=5\%$ 时，accuracy loss 为 <strong><code>0.0-2.4%</code></strong>，且比 <code>SV</code> 少 <strong><code>0.8-7.2%</code></strong> loss。</li>
+<li class="ml-8">重点是 <strong>loss 基本跟着用户设定的 $\alpha$ 走</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="speedup-drr" class="text-2xl mt-2 font-sans">为什么 speedup 能跟上 DRR</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/Yi_-_2025_-_Early_Termination_for_Hyperdimensional_Computing_Using_Inferential_Statistics_images/_page_13_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 16 个非 LDC-BSC benchmark，论文拟合出 <code>SUR = 1.187 * DRR - 0.483</code>。</li>
+<li class="ml-8">这说明 OMEN 的理论优势确实转成了真实 runtime gain，而不是被 control overhead 吃掉。</li>
+<li class="ml-8">LDC-BSC 斜率更差，正好暴露出 <strong>短 hypervector + floating-point test</strong> 的局限。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">噪声硬件下依然成立</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/Yi_-_2025_-_Early_Termination_for_Hyperdimensional_Computing_Using_Inferential_Statistics_images/_page_14_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">在 ReRAM 风格 bit corruption 下，OMEN 仍保持更好的 tradeoff。</li>
+<li class="ml-8"><code>LDC-BSC</code> 噪声实验里，$\alpha=5\%$ 仍有 <strong><code>1.07-2.19x</code></strong> reduction，accuracy drop 仅 <strong><code>0.3-1.4%</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">这篇论文真正贡献了什么</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>把问题重新定义了</strong>: early termination 不再是调 threshold，而是做 <strong>sequential statistical decision</strong>。</li>
+<li class="ml-8"><strong>把理论和工程接上了</strong>: <code>Wald + Holm-Bonferroni + CD precompute</code> 让保证不是停留在纸面上。</li>
+<li class="ml-8"><strong>把适用面扩宽了</strong>: 通过 exchangeability，把方法推广到 learned HDC classifier，而不只是 toy iid setting。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的批评与后续方向</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>最脆弱的点</strong>: Wald test 典型依赖 CLT，但对 learned hypervector，论文严格证明的是 exchangeability，不是 iid；理论闭环还不算完全闭合。</li>
+<li class="ml-8"><strong>缺的实验</strong>: 动机是 edge efficiency，但主结果更偏 latency；若补上 <code>energy / EDP</code>，说服力会更完整。</li>
+<li class="ml-8"><strong>工程余量</strong>: termination points 仍是人工设定的 <code>it/ct</code>，这层 policy 本身还可以继续优化。</li>
+<li class="ml-8"><strong>后续方向</strong>: 把 termination schedule 也做成 learned/offline-optimized policy，或者迁移到其他 progressive inference 系统。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

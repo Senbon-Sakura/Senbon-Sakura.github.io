@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> dip-tcsi-2026 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="dip-systolic-array" class="text-2xl mt-2 font-sans">DiP Systolic Array</h1>
+<h2 id="dip-systolic-array_1" class="text-xl mt-2 pb-2 font-sans">DiP：面向矩阵乘加速的可扩展高能效 Systolic Array</h2>
+<p class="font-serif my-1">Ahmed J. Abdelmaksoud, Shady Agwa, Themis Prodromakis<br/>
+The University of Edinburgh<br/>
+IEEE TCAS-I 2026<br/>
+Presenter: wzw<br/>
+Date: 2026-04-28</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">三句话看懂</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: 传统 <code>weight-stationary (WS)</code> systolic array 为了对齐输入/输出时序，需要额外 <code>FIFO</code>，而且 <code>PE</code> 只能沿对角线逐步激活，<code>TFPU = 2N - 1</code>。</li>
+<li class="ml-8"><strong>方法</strong>: DiP 用 <strong><code>diagonal-input + permutated weight</code></strong> 重写数据流，在不引入大型 <code>adder tree</code> 的前提下直接去掉同步 <code>FIFO</code>。</li>
+<li class="ml-8"><strong>结果</strong>: 在 <code>22nm</code>、<code>64x64</code> 阵列下，DiP 相对 WS 达到 <strong><code>1.49x</code> throughput</strong>、<strong><code>1.21x</code> lower power</strong>、<strong><code>1.93x</code> energy-efficiency-per-area</strong>；在 transformer workloads 上最高 <strong><code>1.81x</code> energy gain</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ws" class="text-2xl mt-2 font-sans">背景：为什么是 WS</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Transformer 的 <code>MHA/FFN</code> 本质上被大规模 <code>matrix multiplication</code> 主导，商业 AI 芯片普遍采用 <code>systolic array</code>。</li>
+<li class="ml-8">在常见 dataflow 里，作者认为 <code>OS</code> 需要更高 memory bandwidth，<code>RS</code> 有更多 data replication；因此他们聚焦更常用的 <code>WS</code>。</li>
+<li class="ml-8"><code>WS</code> 的优点是 weight reuse 高、结构规整、易扩展到大阵列，这也是 <code>TPU-like</code> 设计的主流路线。</li>
+<li class="ml-8">但这篇论文的核心观点是：<strong>WS 真正拖后腿的不是 MAC 本身，而是同步与填充开销。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ws" class="text-2xl mt-2 font-sans">WS 真瓶颈</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Abdelmaksoud_-_2026_-_DiP_A_Scalable_Energy-Efficient_Systolic_Array_for_Matrix_Multiplication_Acceleration_images/_page_2_Figure_2.jpeg" width="760" style="max-width: 92%; max-height: 340px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">左图是标准 <code>WS</code> 阵列：边界需要两组 <code>input/output FIFO</code> 做同步，额外吃掉 area、power、latency。</li>
+<li class="ml-8">更致命的是计算波前从左上向右下传播，阵列在启动阶段长期 <strong>不能满载</strong>。</li>
+<li class="ml-8">论文把这个 startup overhead 明确化成 <code>TFPU</code>，这让后面的 DiP 设计目标非常清楚。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Baseline 需要 <code>TFPU_WS = 2N - 1</code> cycles 才能满载；DiP 只需 <code>TFPU_DiP = N</code>。</li>
+<li class="ml-8">如果输入能按行更快铺满阵列，而不是继续沿 diagonal wave 慢慢扩散，startup waste 就会明显下降。</li>
+<li class="ml-8">所以作者首先优化的不是 MAC 数量，而是 <strong>阵列满载时间</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么会更快</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Latency 从 <code>3N + S - 3</code> 降到 <code>2N + S - 2</code>，主导项直接少了一个 <code>N</code>。</li>
+<li class="ml-8">因此阵列越大，DiP 相对 WS 的 throughput gain 越明显；论文在 <code>64x64</code> 时逼近 <strong><code>1.49x</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="dip" class="text-2xl mt-2 font-sans">DiP 总体架构</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Abdelmaksoud_-_2026_-_DiP_A_Scalable_Energy-Efficient_Systolic_Array_for_Matrix_Multiplication_Acceleration_images/_page_3_Figure_2.jpeg" width="780" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">阵列本身仍是规则的 <code>N x N</code> <code>PE</code> mesh，单个 <code>PE</code> 仍然只是 <code>2-stage pipelined MAC + 4 registers</code>。</li>
+<li class="ml-8">变化点只有两个：<strong>输入改为 diagonal movement</strong>，<strong>权重按列索引做 permutation</strong>。</li>
+<li class="ml-8">这是一种很“硬件保守”的改法：尽量不碰 PE 本体，把收益放在数据流重构上。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="diagonal-input" class="text-2xl mt-2 font-sans">机制一：Diagonal Input</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>局部问题</strong>: baseline WS 的输入只在行内横向传递，导致下方 <code>PE rows</code> 必须等待很久才能被喂饱。</li>
+<li class="ml-8"><strong>新结构</strong>: DiP 让左边界 <code>PE</code> 的寄存输入跨行对角连到下一行最右侧 <code>PE</code>，输入会从一行“斜着”流向下一行。</li>
+<li class="ml-8"><strong>直接收益</strong>: 阵列按行更快铺满，因此 <code>TFPU</code> 从 <code>2N - 1</code> 降到 <code>N</code>，大阵列下启动成本几乎减半。</li>
+<li class="ml-8"><strong>工程判断</strong>: 这比引入复杂全局归约树更稳妥，因为连线模式变了，但 <code>PE datapath</code> 没变。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="weight-permutation" class="text-2xl mt-2 font-sans">机制二：Weight Permutation</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Diagonal input 会打乱原始 weight 到达时序，因此每列都要做循环平移。</li>
+<li class="ml-8">公式是 <code>W'_{j,i} = W_{(j+i)\bmod N,\,i}</code>；结果是 <code>PE</code> 仍在正确 cycle 看到目标 weight，因此能删掉 <code>FIFO</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="3x3" class="text-2xl mt-2 font-sans">3x3 生命周期</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Abdelmaksoud_-_2026_-_DiP_A_Scalable_Energy-Efficient_Systolic_Array_for_Matrix_Multiplication_Acceleration_images/_page_4_Figure_2.jpeg" width="800" style="max-width: 92%; max-height: 380px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Cycle -2 ~ 0</code>: 先按 permutation 后的顺序装入权重；<code>Cycle 0</code> 同时装最后一行权重和第一行输入。</li>
+<li class="ml-8"><code>Cycle 1 ~ 5</code>: 输入先在 <code>Row-0</code> 计算，再通过 diagonal connection 变成下一行需要的顺序继续流动。</li>
+<li class="ml-8">这个例子最关键的 takeaway 是：<strong>FIFO 原来承担的时序对齐工作，现在被“输入走向 + 权重布局”共同吸收了。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">硬件账单</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Size</th>
+<th style="text-align: left;">Tput Gain</th>
+<th style="text-align: left;">Power Gain</th>
+<th style="text-align: left;">Area Gain</th>
+<th style="text-align: left;">Overall Gain</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>32x32</code></td>
+<td style="text-align: left;"><code>1.48x</code></td>
+<td style="text-align: left;"><code>1.25x lower</code></td>
+<td style="text-align: left;"><code>1.09x smaller</code></td>
+<td style="text-align: left;"><code>2.02x</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>64x64</code></td>
+<td style="text-align: left;"><code>1.49x</code></td>
+<td style="text-align: left;"><code>1.21x lower</code></td>
+<td style="text-align: left;"><code>1.07x smaller</code></td>
+<td style="text-align: left;"><code>1.93x</code></td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">DiP 的优势不是只靠“更快”，而是 <strong>throughput 上升 + FIFO 删除 + active-cycle 更集中</strong> 共同作用。</li>
+<li class="ml-8"><code>64x64</code> 时仍能省面积，说明新增的 diagonal wiring 并没有把实现成本重新吃回来。</li>
+<li class="ml-8">论文在结论中还给出峰值点：<code>4096 PEs</code>、<code>8.192 TOPS</code>、<code>9.548 TOPS/W</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>实现方式</strong>: 参数化 <code>Verilog</code>，从综合一直做到 <code>GDSII</code>，工艺为商用 <code>22nm</code>、频率 <code>1 GHz</code>。</li>
+<li class="ml-8"><strong>设计空间</strong>: 阵列规模从 <code>4x4</code> 到 <code>64x64</code>；analytical model 则从 <code>3x3</code> 到 <code>64x64</code> 比较 WS 与 DiP。</li>
+<li class="ml-8"><strong>Workloads</strong>: <code>MHA + FFN</code>，覆盖 <code>Vanilla Transformer / T5 / BART / BERT / ALBERT / Transformer-XL / GPT-2 / GPT-3 / LLaMA</code>。</li>
+<li class="ml-8"><strong>对比对象</strong>: 一类是同工艺、同风格的 <code>WS</code>/<code>TPU-like</code> baseline；另一类是跨论文的 <code>SOTA accelerators</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">解析模型与扩展性</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Abdelmaksoud_-_2026_-_DiP_A_Scalable_Energy-Efficient_Systolic_Array_for_Matrix_Multiplication_Acceleration_images/_page_5_Figure_2.jpeg" width="800" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Fig.4(a)(b)</code> 表明阵列变大时，DiP 的 latency saving 从约 <code>28%</code> 走到 <code>33%</code>，throughput gain 从 <code>33.3%</code> 逼近 <code>49.2%</code>。</li>
+<li class="ml-8"><code>Fig.4(c)</code> 说明仅靠删除同步 <code>FIFO</code>，寄存器开销在 <code>64x64</code> 就可省到约 <code>20%</code>。</li>
+<li class="ml-8"><code>Fig.4(d)</code> 最重要：DiP 用 <code>N</code> cycles 即可满载，而 WS 需要 <code>2N-1</code>；这解释了它为什么尤其擅长小到中等 tile。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="transformer" class="text-2xl mt-2 font-sans">Transformer 结果</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-28/Abdelmaksoud_-_2026_-_DiP_A_Scalable_Energy-Efficient_Systolic_Array_for_Matrix_Multiplication_Acceleration_images/_page_8_Figure_2.jpeg" width="800" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">在 <code>64x64</code> TPU-like baseline 上，DiP 对 <code>MHA/FFN</code> workload 的 <strong>energy gain</strong> 为 <strong><code>1.25x ~ 1.81x</code></strong>，<strong>latency gain</strong> 为 <strong><code>1.03x ~ 1.49x</code></strong>。</li>
+<li class="ml-8">最大收益出现在小到中等 workload，因为 baseline WS 每次装新 <code>M2 tile</code> 时都要重新支付更高的 <code>TFPU</code>。</li>
+<li class="ml-8">随着 workload 变大，baseline 可以逐渐隐藏 startup cost，所以 latency 优势会回落到接近 <code>1.03x</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">与相关工作比较</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric</th>
+<th style="text-align: left;">DiP</th>
+<th style="text-align: left;">TPUv4i</th>
+<th style="text-align: left;">Groq TSP</th>
+<th style="text-align: left;">DTATrans</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Peak Throughput</td>
+<td style="text-align: left;"><code>8.192</code></td>
+<td style="text-align: left;"><code>138</code></td>
+<td style="text-align: left;"><code>820</code></td>
+<td style="text-align: left;"><code>1.304</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Energy Eff.</td>
+<td style="text-align: left;"><strong><code>9.548</code></strong></td>
+<td style="text-align: left;"><code>0.786</code></td>
+<td style="text-align: left;"><code>2.733</code></td>
+<td style="text-align: left;"><code>1.623</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Area Eff. @22nm</td>
+<td style="text-align: left;"><strong><code>8.192</code></strong></td>
+<td style="text-align: left;"><code>0.017</code></td>
+<td style="text-align: left;"><code>0.412</code></td>
+<td style="text-align: left;"><code>2.984</code></td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">按论文的 <code>22nm</code> 归一化口径，DiP 的 <strong>energy efficiency / area efficiency</strong> 很强，尤其优于 system-level 大芯片。</li>
+<li class="ml-8">但这里要主动提醒听众：这张表混合了 <code>core-level</code>、<code>system-level</code>、<code>post-silicon</code>、<code>post-synthesis</code> 和 <code>post-layout</code>，<strong>只能看趋势，不能当严格公平比较</strong>。</li>
+<li class="ml-8">因此真正最可信的证据，仍然是它和同风格 <code>WS/TPU-like</code> baseline 的 head-to-head 对比。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">总结</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">DiP 的真正贡献是把 <strong>同步 FIFO 的问题转化为 dataflow 问题</strong>，而不是继续堆更重的计算/归约结构。</li>
+<li class="ml-8">这个设计同时改善了 <code>latency</code>、<code>throughput</code>、<code>area</code>、<code>power</code>，并且解释链路很完整：<code>lower TFPU + no FIFO + better PE utilization</code>。</li>
+<li class="ml-8">如果只记一句话：<strong>DiP 不是更复杂的 systolic array，而是更聪明的 WS systolic array。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>优点</strong>: 贡献集中、解析模型清楚、实现路径保守，属于“真能落后端”的 microarchitecture 改进。</li>
+<li class="ml-8"><strong>最漂亮的点</strong>: <code>3x3</code> lifecycle 例子把整个想法讲得很透，说明作者对 dataflow correctness 的把握是到 cycle 级的。</li>
+<li class="ml-8"><strong>主要疑问</strong>: 论文把 <code>weight permutation</code> 说成几乎零开销，但没有充分量化地址生成、bank conflict 和 memory scheduling 代价。</li>
+<li class="ml-8"><strong>后续方向</strong>: 我更想看 <code>multi-core DiP</code>、非整除 tile、以及真实 system memory hierarchy 下它还能保留多少收益。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>
