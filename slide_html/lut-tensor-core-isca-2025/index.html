@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> lut-tensor-core-isca-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="lut-tensor-core" class="text-2xl mt-2 font-sans">LUT Tensor Core</h1>
+<h2 id="lut-tensor-core-llm" class="text-xl mt-2 pb-2 font-sans">LUT Tensor Core：面向低比特 LLM 的查表张量核</h2>
+<p class="font-serif my-1">Zhiwen Mo, Lei Wang, Jianyu Wei, Zhichen Zeng, Shijie Cao, Lingxiao Ma, Naifeng Jing, Ting Cao, Jilong Xue, Fan Yang, Mao Yang<br/>
+Imperial College London, Microsoft Research, Peking University, USTC, University of Washington, SJTU<br/>
+ISCA 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-03-25</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">三句话看懂</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: <code>weight-only LLM</code> 的主算子已变成 <code>mpGEMM</code>，但现有 GPU/TPU 不原生支持，只能走 <code>dequantize + GEMM</code>。</li>
+<li class="ml-8"><strong>方法</strong>: LUT Tensor Core 用 <strong><code>DFG transformation + operator fusion + weight reinterpretation + elongated tiling + LMMA</code></strong>，把 mpGEMM 变成可高复用的查表张量核。</li>
+<li class="ml-8"><strong>结果</strong>: 相比现有 LUT 软件方案，最高 <strong><code>1.42× GEMV</code></strong>、<strong><code>72.2× GEMM</code></strong>；端到端在 low-bit LLM 上达 <strong><code>2.06× ~ 5.51×</code></strong> 推理加速。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="mpgemm" class="text-2xl mt-2 font-sans">背景：mpGEMM 成了主角</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/eb131a030d5a40d1b2107db7973083cf.jpeg" width="760" style="max-width: 92%; max-height: 430px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>weight-only quantization</code> 下，<code>QKV / Output projection / FFN linear</code> 都变成 <strong><code>W_INTx × A_FP16/8</code> 的 mpGEMM</strong>。</li>
+<li class="ml-8">低比特的收益本应来自更小权重与更低访存，但现有硬件 datapath 仍围绕 <strong>同精度 GEMM</strong> 设计。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="lut-gpu" class="text-2xl mt-2 font-sans">软件 LUT 在 GPU 上没赢</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/c1b050ba4d8f4c1e936d07d3abafdf3a.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">论文先证明了一件事: <strong>纯软件 LUT kernel 并不自动更快</strong>。</li>
+<li class="ml-8"><code>LUT-GEMM</code> 在 <code>A100</code> 上受限于 <code>prmt</code> 指令宽度、register duplication 与 shared-memory bank conflict，大 batch 时甚至显著落后于 <code>CUTLASS</code>。</li>
+<li class="ml-8">所以问题不是“能不能查表”，而是 <strong>现有 GPU 对 LUT 的执行路径不友好</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="lut" class="text-2xl mt-2 font-sans">朴素 LUT 硬件也不够好</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/3cb96a98d06e483fa0b6ec6d1b850918.jpeg" width="760" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">传统 LUT accelerator 的三步是: <strong>table precompute → table lookup → partial-sum addition</strong>。</li>
+<li class="ml-8">真正拖垮效率的是 <strong>precompute redundancy、table storage、broadcast、MUX cost</strong>，而不是 LUT 单元本身。</li>
+<li class="ml-8">这篇论文的切题点很准: <strong>不先减轻建表与存表成本，LUT 硬件不会比 MAC 更划算</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">总体方案：软硬协同重写数据流</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/11ef3472e0c1439f9402cd7f37060529.jpeg" width="820" style="max-width: 92%; max-height: 430px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>软件侧</strong>: <code>DFG transformation</code> 把 precompute 剥离成独立算子；<code>operator fusion</code> 吃掉额外访存；<code>offline remapping</code> 做权重重解释。</li>
+<li class="ml-8"><strong>硬件侧</strong>: LUT unit 改成支持 <code>bit-serial</code>、半尺寸 table 和高复用 tiling 的 Tensor Core。</li>
+<li class="ml-8"><strong>接口侧</strong>: 用 <code>LMMA</code> 指令把 LUT-mpGEMM 纳入现有 tile-based compiler。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1-tensor-core" class="text-2xl mt-2 font-sans">机制 1：把建表挪出 Tensor Core</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/8a0e5719b34245e9bc2cf4fd4215be76.jpeg" width="800" style="max-width: 92%; max-height: 350px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">传统设计里，每个 LUT unit 都本地重复 precompute；<code>OPT-175B</code> 的例子中，同一张表会被重复算 <strong><code>3072</code> 次</strong>。</li>
+<li class="ml-8">论文做 <code>DFG transformation + fusion</code>，让 LUT table 变成 <strong>一次建表、多处广播</strong>。</li>
+<li class="ml-8">核心价值是把“重复建表”从硬件热点改成<strong>编译器可调度的数据流问题</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2" class="text-2xl mt-2 font-sans">机制 2：权重重解释让表减半</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/93e20cd15d074c3aaae8142564237f36.jpeg" width="720" style="max-width: 92%; max-height: 340px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">作者把 <code>uint q_w</code> 重映射到关于 0 对称的 <code>q'_w</code>；于是 <code>LUT[idx] = -LUT[~idx]</code>，表长从 <code>2^K</code> 降到 <code>2^{K-1}</code>。</li>
+<li class="ml-8">结果不只是表减半，也同步减轻 <strong>broadcast、MUX 与后端电路负担</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="3lut" class="text-2xl mt-2 font-sans">机制 3：LUT 单元按位串行化</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/f003d6e079b84874a24a8ee6e1d49e77.jpeg" width="760" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">软件优化后，硬件里不再需要完整 negation 电路与全尺寸 table，LUT unit 只保留 <strong>半尺寸表 + MUX + bit-serial shifter</strong>。</li>
+<li class="ml-8"><code>W_BIT</code> 被映射成 cycle 数，因此同一物理结构可支持 <code>INT1/2/4 × FP16/8/INT8</code> 等不同精度组合。</li>
+<li class="ml-8">这比为每种 mpGEMM 单独做 MAC datapath 更灵活，也更符合 low-bit LLM 变化快的现实。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="4tile" class="text-2xl mt-2 font-sans">机制 4：tile 形状必须拉长</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/9091440b30854d6988cff5516fb05d26.jpeg" width="820" style="max-width: 92%; max-height: 410px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">传统 Tensor Core 喜欢接近方形的 tile；LUT Tensor Core 则必须 <strong>小 <code>M</code>、大 <code>N</code>、适中 <code>K</code></strong>。</li>
+<li class="ml-8">原因是 LUT 成本按 <code>2^K</code> 增长，而收益主要靠同一张 table 在更多 weight columns 上复用，所以 <strong><code>N</code> 必须大</strong>。</li>
+<li class="ml-8">最优设计点是 <strong><code>M2N64K4</code></strong>，这就是论文反复强调的 <strong>elongated tiling</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="lmma" class="text-2xl mt-2 font-sans">LMMA 让它可被编程</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">作者定义 <code>lmma.{M}{N}{K}.{A_dtype}{W_dtype}{Accum_dtype}{O_dtype}</code>，保持与 <code>MMA</code> 接近的编程模型。</li>
+<li class="ml-8">这样 <code>TVM / Roller / Welder</code> 只需注册新的 intrinsic 和 tiling 规则，就能把 low-bit LLM 的 <code>mpGEMM</code> 映射到 LUT Tensor Core。</li>
+<li class="ml-8">这一步很重要，因为它说明论文不只是一个 LUT PE，而是<strong>试图接入现有 GPU 软件栈</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="k4" class="text-2xl mt-2 font-sans">硬件账单：K=4 是甜蜜点</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/2e420d9845214ac28b36b7bef59717f9.jpeg" width="720" style="max-width: 92%; max-height: 300px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>K</code> 太小会留下太多加法；<code>K</code> 太大又让 LUT 指数膨胀，因此 <strong><code>K=4</code></strong> 是甜蜜点。</li>
+<li class="ml-8">对 <code>W_INT1A_FP16</code>，LUT DP4 的 compute density 达 <strong><code>61.55 TFLOPs/mm²</code></strong>，而传统 <code>W_FP16A_FP16</code> MAC DP4 只有 <strong><code>3.39 TFLOPs/mm²</code></strong>。</li>
+<li class="ml-8">论文报告相对传统 Tensor Core 有 <strong><code>4× ~ 6×</code></strong> PPA 改善，但证据仍是综合与仿真，不是 silicon。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>PPA</strong>: Verilog + <code>Synopsys DC</code> + <code>TSMC 28nm</code>，统一目标 <code>1GHz</code>。</li>
+<li class="ml-8"><strong>Kernel-level</strong>: 改造 <code>Accel-Sim</code>，模拟原始 A100 与搭载 LUT Tensor Core 的 A100。</li>
+<li class="ml-8"><strong>E2E</strong>: 自建 tile-based simulator，单层对 <code>A100 / RTX3090</code> 的平均误差约 <strong><code>5.21%</code></strong>。</li>
+<li class="ml-8"><strong>Models / Baselines</strong>: <code>LLAMA-2</code>, <code>OPT</code>, <code>BLOOM</code>, <code>BitNet</code>；对比 <code>MAC-based TC</code>、<code>ADD-based TC</code>、<code>LUT-GEMM</code>、<code>UNPU</code> 等。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="ppalut" class="text-2xl mt-2 font-sans">PPA：LUT 版更省面积和功耗</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/09e4abe0af93429493cac04afa8e42d3.jpeg" width="780" style="max-width: 92%; max-height: 330px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">图 14 的结论很直接: 多数 <code>W_INT1/2/4 × A_FP16/8/INT8/INT16</code> 组合下，绿色 LUT 点都更靠近 area-power 边界。</li>
+<li class="ml-8">论文最终称 LUT Tensor Core 只占传统 Tensor Core <strong><code>16%</code></strong> 面积，却能提供更高的 mpGEMM 性能。</li>
+<li class="ml-8">但也要注意，<code>W_INT8A_INT4</code> 一类更高位宽组合下，LUT 优势已经不再绝对。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="kernelmpgemm" class="text-2xl mt-2 font-sans">Kernel：mpGEMM 跑得起来</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/b7977544f3ba43c5b4d7aae4f373b309.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">论文在 <code>LLAMA2-13B</code> 提取的 mpGEMM shape 上，用 <code>Accel-Sim</code> 评估 LUT Tensor Core。</li>
+<li class="ml-8">以 <code>W_INT1A_FP16</code> 为例，LUT 版只用传统 Tensor Core <strong><code>14.3%</code> area</strong>，却能达到略高 throughput。</li>
+<li class="ml-8">增大 register 后收益更明显，说明瓶颈仍受寄存器和 memory hierarchy 影响。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="low-bit-llm" class="text-2xl mt-2 font-sans">端到端：对 low-bit LLM 有实益</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/fc89b0fe96364d0c990777e07fa86d61.jpeg" width="780" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">在 <code>OPT-175B / BLOOM-176B / LLAMA-70B</code> 上，端到端收益随 batch 与模型变化，但趋势稳定优于基线。</li>
+<li class="ml-8">论文 headline 是 <strong>最高 <code>8.2×</code> normalized speedup</strong>；更保守看表 1，实际 low-bit inference speedup 为 <strong><code>2.06× ~ 5.51×</code></strong>。</li>
+<li class="ml-8">换句话说，LUT Tensor Core 的收益不是只停留在 kernel microbenchmark，而是能传到 LLM inference latency。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">哪些优化最值钱</h1>
+<p class="font-serif my-1"><img class="float-center" src="./static/img/f81efad1851b4d7785007951257342e9.jpeg" width="780" style="max-width: 92%; max-height: 280px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>对软件 baseline</strong>: 相对 <code>LUT-GEMM</code>，LUT Tensor Core 达到 <strong><code>1.42×</code> GEMV</strong> 和 <strong><code>72.2×</code> GEMM</strong>。</li>
+<li class="ml-8"><strong>对旧 LUT hardware</strong>: 相对 <code>UNPU</code>，加上 reinterpretation、negation elimination 和 fusion 后，compute intensity / power efficiency 都到 <strong><code>1.44×</code></strong>。</li>
+<li class="ml-8"><strong>对精度</strong>: <code>INT8 table quantization</code> 几乎无损，<code>LLAMA2-7B W_INT2</code> 上 <code>PPL 7.68 → 7.69</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">这篇论文最重要的贡献，不是“想到用 LUT”，而是<strong>证明 LUT 只有在软硬件一起重构时才可能赢过 dequantization-based mpGEMM</strong>。</li>
+<li class="ml-8">四个关键点是: <code>precompute fusion</code>、<code>weight reinterpretation</code>、<code>elongated tiling</code>、<code>LMMA + compiler stack</code>。</li>
+<li class="ml-8">如果记一句话，就是: <strong>LUT Tensor Core 把 low-bit LLM 的主算子从乘加问题改写成了高复用的查表问题。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>优点</strong>: 问题定义很准，工程链条完整，从 DFG 到 ISA 再到 PPA 与 end-to-end 都讲清楚了。</li>
+<li class="ml-8"><strong>局限</strong>: headline 数字高度依赖 <code>Accel-Sim</code>、自建 simulator 和 28nm 归一化，并非 silicon 结果。</li>
+<li class="ml-8"><strong>脆弱假设</strong>: precompute 融合默认前驱算子可融合且访存可隐藏；如果图结构不配合，收益会下降。</li>
+<li class="ml-8"><strong>后续方向</strong>: 和原生 <code>FP4/FP8</code> Tensor Core、长上下文 attention、KV-cache quantization 做更直接的 full-system 对比。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

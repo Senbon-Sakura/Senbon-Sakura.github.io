@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> h3-hbf-lca-2026 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="h3" class="text-2xl mt-2 font-sans">H3</h1>
+<h2 id="llm-hbmhbf" class="text-xl mt-2 pb-2 font-sans">面向低成本 LLM 推理的 HBM+HBF 混合架构</h2>
+<p class="font-serif my-1">Minho Ha, Euiseok Kim, Hoshik Kim<br/>
+SK hynix Inc.<br/>
+LCA 2026<br/>
+Presenter: wzw<br/>
+Date: 2026-05-24</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">三句话看懂</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: <code>HBM</code> 带宽高但容量太小，<code>CAG/shared pre-computed KV cache</code> 一上到 <code>1M/10M</code> 上下文，就会把系统逼成“多堆 GPU 才能存下”的成本问题。</li>
+<li class="ml-8"><strong>方法</strong>: 论文提出 <code>H^3 = HBM + HBF</code>，把<strong>巨型只读</strong>的模型权重和 shared KV 放进 <code>HBF</code>，把生成期 <code>KV cache</code> 留在 <code>HBM</code>，再用 <code>Latency Hiding Buffer (LHB)</code> 预取遮住 <code>HBF</code> 的 <code>us</code> 级延迟。</li>
+<li class="ml-8"><strong>结果</strong>: 在 <code>Llama 3.1 405B</code> 的模拟评估中，<code>10M</code> 场景最大 batch size 提升到 <strong><code>18.8x</code></strong>，throughput 提升 <strong><code>6.14x</code></strong>，throughput per power 最高 <strong><code>2.69x</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">场景先讲清</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">这篇 paper 不是讨论通用 LLM serving，而是瞄准 <code>Cache-Augmented Generation (CAG)</code> 这类<strong>巨型只读 shared KV cache</strong> 的场景。</li>
+<li class="ml-8">请求到来前，系统先把共享知识预计算成 <code>KV cache</code>；推理时主要是<strong>反复读取</strong>这份 cache，而不是频繁改写它。</li>
+<li class="ml-8">这正好击中 <code>HBF</code> 的长处: <strong>大容量 + 高带宽读取</strong>，同时避开其短板: <strong>高写延迟 / 差写耐久</strong>。</li>
+</ul>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-24/Ha_-_2026_-_H3_Hybrid_Architecture_Using_High_Bandwidth_Memory_and_High_Bandwidth_Flash_for_Cost-Efficient_LLM_images/_page_0_Picture_12.jpeg" width="760" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">真正卡住的是容量</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">文中用 <code>Llama 3.1 405B</code> 举例: shared pre-computed <code>KV cache</code> 在 <code>1M</code> 和 <code>10M</code> 序列长度下约为 <strong><code>540 GB</code></strong> 和 <strong><code>5.4 TB</code></strong>。</li>
+<li class="ml-8">这意味着，哪怕不谈算力，只为了<strong>把数据放下</strong>，HBM-only 系统就得上很多 GPU。</li>
+<li class="ml-8">所以本文的核心问题不是“让单卡更快”，而是<strong>能否在近 GPU 层级同时拿到 HBM 级带宽和远大于 HBM 的容量</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="hbf" class="text-2xl mt-2 font-sans">HBF 为何有吸引力</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-24/Ha_-_2026_-_H3_Hybrid_Architecture_Using_High_Bandwidth_Memory_and_High_Bandwidth_Flash_for_Cost-Efficient_LLM_images/_page_1_Picture_2.jpeg" width="700" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">论文把 <code>HBF</code> 定义成一种 TSV 叠层 <code>NAND flash</code>，目标是提供<strong>接近 HBM 的带宽</strong>与<strong>约 16x HBM 的容量</strong>。</li>
+<li class="ml-8">但它并不是免费午餐: 访问延迟从 <code>ns</code> 上升到 <code>us</code>，写耐久更差，单位功耗最高可到 HBM 的 <strong><code>4x</code></strong>。</li>
+<li class="ml-8">所以 <code>HBF</code> 不能单独当通用主存，它需要一个<strong>只读、带宽敏感、且访问顺序可预测</strong>的 workload。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>CAG</code> / gigantic shared KV cache 正好满足这个 workload 画像: <strong>数据巨大、几乎只读、访问顺序可预测、且容量可以直接换 batch</strong>。</li>
+<li class="ml-8">论文的核心判断是: <strong>这种场景更缺容量，而不是更缺最后一点访问延迟</strong>。</li>
+<li class="ml-8">因此，与其把所有数据都放在 HBM，不如把“只读大对象”和“可写敏感数据”分层放置。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="h3" class="text-2xl mt-2 font-sans">H3 总览</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-24/Ha_-_2026_-_H3_Hybrid_Architecture_Using_High_Bandwidth_Memory_and_High_Bandwidth_Flash_for_Cost-Efficient_LLM_images/_page_1_Figure_10.jpeg" width="800" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>HBM</code> 直连 GPU shoreline，<code>HBF</code> 通过 <code>HBM base die</code> 级联，二者一起暴露为 GPU 的 main memory。</li>
+<li class="ml-8">关键新增块是 <code>address decoder &amp; router + LHB</code>，所以这不是 PCIe 外挂 Flash，而是<strong>近封装异构主存</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">数据放哪一层</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-24/Ha_-_2026_-_H3_Hybrid_Architecture_Using_High_Bandwidth_Memory_and_High_Bandwidth_Flash_for_Cost-Efficient_LLM_images/_page_1_Figure_12.jpeg" width="760" style="max-width: 92%; max-height: 340px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>放在 HBF</strong>: <code>model weights</code> + <code>shared pre-computed KV cache</code>，因为它们巨大、只读、带宽敏感。</li>
+<li class="ml-8"><strong>放在 HBM</strong>: <code>generated KV cache</code> 和其他需要低延迟、频繁写入的数据。</li>
+<li class="ml-8">这不是传统 cache eviction，而是一个<strong>静态角色分工</strong>: <code>HBF</code> 负责“存得下”，<code>HBM</code> 负责“写得动”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">一次推理如何走</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Step 1</strong>: GPU 读取 <code>HBF</code> 中的模型权重与 shared pre-computed KV，同时从 <code>HBM</code> 读取当前生成阶段的 KV。</li>
+<li class="ml-8"><strong>Step 2</strong>: 当前层计算完成后，新生成的 <code>KV cache</code> 写回 <code>HBM</code>，而不是写去 <code>HBF</code>。</li>
+<li class="ml-8"><strong>Step 3</strong>: 因为下一层要用的 tensor 是确定的，framework 可以提前发出 <code>prefetch hint</code>。</li>
+<li class="ml-8"><strong>Step 4</strong>: <code>LHB</code> 在后台把后续层需要的 HBF 数据提前拉近，于是 HBF 的长延迟被尽量藏在 layer 间隙里。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="lhb" class="text-2xl mt-2 font-sans">LHB 是关键补丁</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>HBF</code> 最大的问题不是带宽，而是 <code>us</code> 级访问延迟，直接裸读会把 GPU 卡死。</li>
+<li class="ml-8">论文引入 <code>Latency Hiding Buffer (LHB)</code>，本质上是 base die 上的 tensor-level prefetch buffer。</li>
+<li class="ml-8">它依赖的不是复杂 predictor，而是 LLM 推理的<strong>确定性层级访问顺序</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="lhb-40-mbcube" class="text-2xl mt-2 font-sans">LHB 约 40 MB/cube</h1>
+<p class="font-serif my-1">$$
+\mathrm{Capacity}<em HBF="HBF">{LHB} = 2 \times \mathrm{BW}</em>
+$$} \times \mathrm{Latency}_{HBF</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">硬件账本</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>LHB capacity</strong>: 每个 HBF cube 约 <strong><code>40 MB SRAM</code></strong>。</li>
+<li class="ml-8"><strong>Area</strong>: 按 <code>3 nm SRAM density = 0.021 um^2/bit</code> 估算，SRAM core 面积约 <strong><code>6.72 mm^2</code></strong>；算上 <code>20%</code> 额外电路后总计 <strong><code>8.06 mm^2</code></strong>。</li>
+<li class="ml-8"><strong>Base-die overhead</strong>: 约占 <code>121 mm^2</code> base die 的 <strong><code>6.7%</code></strong>，作者认为可接受。</li>
+<li class="ml-8"><strong>风险</strong>: 所有收益都建立在 <code>HBF bandwidth ~= HBM bandwidth</code> 的假设上，真实产品化时这里最不确定。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学先交代</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>评估方式</strong>: 不是硅后测量，而是作者基于先前工作搭的 <strong>analytical simulator</strong>。</li>
+<li class="ml-8"><strong>Workload</strong>: <code>Llama 3.1 405B</code>，并把 context 从原始 <code>128K</code> 扩到假设的 <code>1M</code> 和 <code>10M</code>。</li>
+<li class="ml-8"><strong>System assumption</strong>: GPU 取 <code>NVIDIA B200</code>；<code>HBM3e = 192 GB, 8 TB/s</code>；<code>HBF = 3 TB, 8 TB/s</code>。</li>
+<li class="ml-8"><strong>Topology</strong>: <code>1M</code> 评估用 <code>8 GPUs</code>，<code>10M</code> 用 <code>32 GPUs</code>，这些都是为 HBM-only case 能跑起来设定的最小规模。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="batch" class="text-2xl mt-2 font-sans">最大收益先来自 batch</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-24/Ha_-_2026_-_H3_Hybrid_Architecture_Using_High_Bandwidth_Memory_and_High_Bandwidth_Flash_for_Cost-Efficient_LLM_images/_page_2_Figure_9.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">先读图: 横轴是 GPU 数量，纵轴是最大 batch size，橙色是 <code>HBM-only</code>，红色是 <code>H^3</code>。</li>
+<li class="ml-8"><code>1M</code> 场景下，<code>8 GPU</code> 时最大 batch size 约提高到 <strong><code>2.6x</code></strong>；<code>10M</code> 场景最高达到 <strong><code>18.8x</code></strong>。</li>
+<li class="ml-8">论文还强调一个很实用的信号: <strong>单 GPU 可跑 1M，双 GPU 可跑 10M</strong>，说明 H3 改变的是可部署门槛。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">吞吐与每瓦吞吐</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-24/Ha_-_2026_-_H3_Hybrid_Architecture_Using_High_Bandwidth_Memory_and_High_Bandwidth_Flash_for_Cost-Efficient_LLM_images/_page_3_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">左图是 <code>normalized TPS per batch</code>，右图是 <code>normalized TPS per batch per power</code>。</li>
+<li class="ml-8"><code>1M</code> 场景 throughput 提升 <strong><code>1.25x</code></strong>；<code>10M</code> 场景提升到 <strong><code>6.14x</code></strong>。</li>
+<li class="ml-8">更重要的是，尽管 <code>HBF</code> 更耗电，H3 的 throughput per power 最高仍达到 <strong><code>2.69x</code></strong>，说明容量收益没有被功耗吞掉。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">带宽减半也还成立</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">论文额外测了 <code>H^3 (1/2 bandwidth HBF)</code>，也就是把 <code>HBF</code> 带宽直接砍半。</li>
+<li class="ml-8">结果并没有崩掉:</li>
+<li class="ml-8"><code>1M</code> 场景 throughput 仍不差于 <code>HBM-only</code>；</li>
+<li class="ml-8"><code>10M</code> 场景 throughput per power 仍有 <strong><code>2.09x</code></strong>。</li>
+<li class="ml-8">这说明 H3 的收益不要求 HBF 在所有维度都完美复制 HBM，但也侧面说明: <strong>真正敏感的还可能是 latency，而不是带宽减半本身</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="paper" class="text-2xl mt-2 font-sans">这篇 paper 真正证明了什么</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>已经证明</strong>: 如果未来 <code>HBF</code> 真能接近文中目标规格，那么 <code>HBM + HBF</code> 对 gigantic read-only KV 场景确实有很强的系统收益。</li>
+<li class="ml-8"><strong>没有证明</strong>: 真实 <code>HBF</code> 器件能否同时满足带宽、功耗、热设计与控制器复杂度要求。</li>
+<li class="ml-8"><strong>最大的因果链</strong>: <code>更大容量 -&gt; 更大 batch -&gt; 更高 throughput -&gt; 更好 throughput per power</code>。</li>
+<li class="ml-8">所以这篇 paper 更像<strong>架构方向判断</strong>，不是一个已经落地的 runtime / silicon 方案。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">论文提出 <code>H^3</code>，把 <code>HBM</code> 和 <code>HBF</code> 组织成统一编址的近封装异构主存。</li>
+<li class="ml-8">它抓住了一个非常适合 <code>HBF</code> 的场景: <strong>巨型只读模型权重 + shared pre-computed KV cache</strong>。</li>
+<li class="ml-8">在作者的模拟设定中，H3 把 <code>10M</code> case 的最大 batch size 提升 <strong><code>18.8x</code></strong>，throughput 提升 <strong><code>6.14x</code></strong>，throughput per power 最高 <strong><code>2.69x</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>优点</strong>: 问题抓得准，故事很完整，而且不是空喊 <code>HBF</code> 概念，而是明确给出最合适的数据形态和一个可算账的 <code>LHB</code>。</li>
+<li class="ml-8"><strong>局限</strong>: 证据完全来自 simulator，且 <code>HBF</code> 规格本身就是目标值，不是实测值，离真实产品还有明显距离。</li>
+<li class="ml-8"><strong>缺的实验</strong>: 我最想看 <code>HBF latency</code> 敏感性、真实 runtime prefetch hint、以及和 <code>CXL / host-side tiering</code> 的正面对比。</li>
+<li class="ml-8"><strong>后续方向</strong>: 做一个近似原型，验证 <code>framework hint + LHB + heterogeneous placement</code> 能否在真实软件栈里协同工作。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>
