@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> deadlock-free-bridge-hpca-2026 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="dfbm" class="text-2xl mt-2 font-sans">DFBM</h1>
+<h2 id="chiplet" class="text-xl mt-2 pb-2 font-sans">面向开放 Chiplet 生态的无死锁桥接模块</h2>
+<p class="font-serif my-1">Zhiqiang Chen, Wenwen Fu, Yongwen Wang, Hongwei Zhou<br/>
+National University of Defense Technology<br/>
+HPCA 2026<br/>
+Presenter: wzw<br/>
+Date: 2026-05-09</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">三句话看懂</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: <code>open chiplet ecosystem</code> 要求 plug-and-play，但现有 inter-chiplet deadlock 方案往往依赖 chiplet 内部 <code>NoC / VC / permission network</code> 细节。</li>
+<li class="ml-8"><strong>方法</strong>: 论文把 deadlock resolution 抽到边界桥模块 <code>DFBM</code>，用 <code>coherence transaction dependency</code> 预测包行为，再用 <code>credit management + CVN-DB</code> 做 admission control。</li>
+<li class="ml-8"><strong>结果</strong>: 在 <code>gem5 + Garnet</code> 多芯粒平台上，较 SOTA 带来 <strong><code>1%~7% latency</code></strong> 改善，同时把额外面积控制在 <strong><code>2.5% area overhead</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">开放生态缺什么</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>UCIe</code> 解决的是 die-to-die interface 标准化，但<strong>没有自动解决 package-level routing deadlock</strong>。</li>
+<li class="ml-8">多个内部各自 deadlock-free 的 chiplet 接到 interposer 后，仍可能形成新的 <code>cyclic channel dependency</code>。</li>
+<li class="ml-8">对开放生态来说，问题不只是“能不能解死锁”，而是<strong>解法是否破坏 modularity / portability / vendor independence</strong>。</li>
+</ul>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_0_Figure_9.jpeg" width="760" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">现有解法为何不够开放</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>MTR</strong>: 依赖 boundary <code>turn restriction</code>，会牵制 <code>floorplan / vertical channel</code> 分布。</li>
+<li class="ml-8"><strong>DeFT</strong>: 依赖 <code>VC isolation</code>，要求 chiplet 内部提供额外 <code>VCs</code>，集成成本更高。</li>
+<li class="ml-8"><strong>RC</strong>: 用 <code>permission network</code> 做 injection control，但要侵入 chiplet 内部 NoC，验证和复用都更重。</li>
+<li class="ml-8">论文的切入点很明确: <strong>deadlock resolution 不应再绑定 chiplet 内部实现细节</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">coherence protocol 自带<strong>因果依赖链</strong>: <code>Request -&gt; Fwd-Req -&gt; Response</code>。</li>
+<li class="ml-8">这些 transaction 依赖会映射成跨 <code>VN</code> 的 packet activity 相关性，因此可在边界上做预测，而不必知道内部每条 route。</li>
+<li class="ml-8">另外 <code>VN utilization</code> 明显不对称，这给了共享 deadlock buffer 的空间。</li>
+</ul>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_3_Figure_6.jpeg" width="780" style="max-width: 92%; max-height: 350px; object-fit: contain;"/></p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="dfbm" class="text-2xl mt-2 font-sans">DFBM 总览</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_4_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 430px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">DFBM 位于 <code>chiplet NoC &lt;-&gt; interposer NoC</code> 边界，只复用已有 <code>VC signaling</code>，不增加额外控制线。</li>
+<li class="ml-8">结构分成两块: <code>CM (Credit Management)</code> 负责准入；<code>CVN-DB</code> 负责拥塞时的共享 deadlock buffering。</li>
+<li class="ml-8">这篇 paper 最强的点就在这里: <strong>把 deadlock resolution 变成 plug-and-play bridge module</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="gets" class="text-2xl mt-2 font-sans">一次 GetS 如何被预测</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_6_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">作者用 <code>R_t0</code> 这类 transaction set 表示“某个 coherence request 最终会诱发哪些响应”，这样 DFBM 就能在边界预留足够 credit。</li>
+<li class="ml-8">对 <code>GETS</code>，最直接的例子就是 <code>GetS -&gt; Data</code>；若存在 <code>0..K</code> 个响应的不确定事务，再用 <code>dummy packet</code> 固化上界。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="cm" class="text-2xl mt-2 font-sans">CM 两阶段流控</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_5_Figure_11.jpeg" width="780" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Stage 1</strong>: <code>Expected Credit Table</code> 把 coherence type 映射到所需 credit 数。</li>
+<li class="ml-8"><strong>Stage 2</strong>: 将 <code>expected credit</code> 与当前 <code>buffer occupancy</code> 比较，决定是 <code>admit</code> 还是 <code>block</code>。</li>
+<li class="ml-8">CM 维护两类 credit: <code>pre-allocated</code> 给主动 <code>Out-Req</code>，<code>reserved</code> 给被外部请求触发的被动响应。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">生命周期视角</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Step 1</strong>: <code>In-Req / In-Fwd-Req</code> 进入 DFBM，CM 查表得到该事务在最坏情况下可能诱发的响应上界 <code>Pmax</code>。</li>
+<li class="ml-8"><strong>Step 2</strong>: 只有当 <code>reserved credit &gt;= Pmax</code> 时才允许进入 chiplet，确保将来返回流量可被吸收。</li>
+<li class="ml-8"><strong>Step 3</strong>: 若输出阻塞时间超过阈值，<code>Out-Rsp / Out-Fwd-Req / Out-Req</code> 被转入 deadlock buffer。</li>
+<li class="ml-8"><strong>Step 4</strong>: 包退出后同时归还 credit，因此 DFBM 始终控制着“允许形成多少依赖链”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="cvn-db" class="text-2xl mt-2 font-sans">CVN-DB 共享缓冲</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_7_Figure_8.jpeg" width="760" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>CVN-DB</code> 不是简单省面积，而是利用 <code>VN</code> 之间的时序不均衡做<strong>跨 VN 共享 deadlock buffer</strong>。</li>
+<li class="ml-8">优先级严格按 <code>Response &gt; Fwd-Req &gt; Request</code>，因为高优先级消息由低优先级消息触发。</li>
+<li class="ml-8">这等于强制系统按依赖方向排空消息链，而不是让低优先级请求把缓冲先占满。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为何不会死锁</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_8_Figure_6.jpeg" width="760" style="max-width: 92%; max-height: 350px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">证明直觉并不复杂: DFBM 保证 chiplet 发向 interposer 的包在最坏情况下都能被完全吸收。</li>
+<li class="ml-8">一旦 <code>chiplet -&gt; interposer</code> 垂直通道不再形成阻塞依赖，<code>CDG</code> 中跨 chiplet 的关键环就被切断。</li>
+<li class="ml-8">所以作者做的不是 “recovery after deadlock”，而是<strong>在边界处让环根本闭合不起来</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">硬件账本</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_9_Figure_9.jpeg" width="760" style="max-width: 92%; max-height: 300px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Area</strong>: dedicated per-VN deadlock buffer 时 DFBM 约 <strong><code>5%</code></strong>；换成 <code>CVN-DB</code> 后降到 <strong><code>2.5%</code></strong>。</li>
+<li class="ml-8"><strong>Power</strong>: 明显低于 DeFT 这种额外增加 VC 资源的做法；额外开销主要落在 interposer 侧。</li>
+<li class="ml-8"><strong>Deployability</strong>: RC 的 <strong><code>1.9%</code></strong> 开销在 chiplet 内部；DFBM 则把复杂性外置到更便宜、可复用的 interposer。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">实验设置</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Platform</strong>: <code>gem5 + Garnet</code>，4 个 homogeneous chiplets + 共享 interposer。</li>
+<li class="ml-8"><strong>Topology</strong>: chiplet 与 interposer 都是 <code>4x4 mesh</code>，routing 为 <code>XY</code>。</li>
+<li class="ml-8"><strong>Protocol / VN</strong>: <code>MESI Two Level</code>，<code>3 VNs</code>，每个 VN 评估 <code>2 / 4 VCs</code>。</li>
+<li class="ml-8"><strong>Workloads</strong>: synthetic (<code>uniform-random / transpose / bit-rotation</code>) + full-system <code>PARSEC</code>。</li>
+<li class="ml-8"><strong>Baselines</strong>: <code>MTR</code>, <code>DeFT</code>, <code>RC</code>，分别代表 turn restriction、VC isolation、injection control 三条路线。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="synthetic" class="text-2xl mt-2 font-sans">Synthetic 结果</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_9_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">先读图: 横轴是 <code>injection rate</code>，纵轴是 <code>latency</code>；每组子图对比不同 <code>VC</code> 数和 traffic pattern。</li>
+<li class="ml-8">在 <code>2 VCs</code> 下，<code>DFBM / RC</code> 比 <code>MTR / DeFT</code> 饱和点更靠右，论文给出的解释是 <strong>vertical channel 选择更自由</strong>。</li>
+<li class="ml-8">在 uniform traffic 下，<code>DFBM / RC</code> 的 saturation throughput 相对 <code>MTR / DeFT</code> 约高 <strong><code>14%</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">全系统结果</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_10_Figure_0.jpeg" width="820" style="max-width: 92%; max-height: 380px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>PARSEC</code> 下，DFBM 在各 workload 上都稳定优于 <code>MTR / DeFT / RC</code>，不是只在 synthetic traffic 才成立。</li>
+<li class="ml-8"><strong>uniform channels</strong>: 相比 <code>MTR</code> 延迟下降 <strong><code>1%~7%</code></strong>，平均 <strong><code>3%</code></strong>。</li>
+<li class="ml-8"><strong>non-uniform channels</strong>: 论文还报告相对 <code>MTR</code> 仍有 <strong><code>1%~4%</code></strong> 降低，平均 <strong><code>2%</code></strong>，说明它对 floorplan / link asymmetry 更稳。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">敏感性分析</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_10_Figure_11.jpeg" width="760" style="max-width: 92%; max-height: 260px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>VC=4</code> 时继续增大 <code>CVN-DB</code> 容量几乎不提升性能，说明瓶颈已转向 vertical channel。</li>
+<li class="ml-8"><code>VC=2</code> 时 buffer 容量确实重要，但超过某个阈值后收益快速递减。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">共享缓冲代价</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-05-09/Chen_-_2026_-_A_Deadlock-Free_Bridge_Module_for_Inter-Chiplet_Cache-Coherent_Communication_in_an_Open_Chiplet_Ecos_images/_page_10_Figure_12.jpeg" width="760" style="max-width: 92%; max-height: 320px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">共享缓冲相对 dedicated buffer 只有<strong>很小的性能损失</strong>，说明 priority-based admission 没有明显伤到 steady-state 性能。</li>
+<li class="ml-8">换来的收益是 area 从 dedicated per-VN 方案的 <strong><code>5%</code></strong> 压到 <strong><code>2.5%</code></strong>，这是 CVN-DB 最大的性价比来源。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">论文最重要的贡献不是又提一个 routing policy，而是把 inter-chiplet deadlock resolution <strong>抽象成边界桥模块</strong>。</li>
+<li class="ml-8"><code>CM</code> 用 protocol dependency 预测未来响应并控制准入，<code>CVN-DB</code> 用依赖顺序做跨 VN 排空。</li>
+<li class="ml-8">最终在不改 chiplet 内部 NoC 的前提下，拿到 <strong><code>1%~7% latency</code></strong> 改善与 <strong><code>2.5% area overhead</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>优点</strong>: 抓住了 open chiplet ecosystem 的真实痛点，抽象层次选得很准，工程闭环也完整。</li>
+<li class="ml-8"><strong>局限</strong>: 实验平台仍是 <code>4x4 mesh + XY + homogeneous chiplets</code>，对“arbitrary heterogeneous chiplets”的论断还偏 architecture claim。</li>
+<li class="ml-8"><strong>缺的实验</strong>: 更想看 mixed topology / mixed routing / mixed vendor metadata 的真正异构组合。</li>
+<li class="ml-8"><strong>后续方向</strong>: 把 <code>expected credit table</code> 自动从 coherence spec 生成，并验证在更复杂协议上的保守性成本。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>
