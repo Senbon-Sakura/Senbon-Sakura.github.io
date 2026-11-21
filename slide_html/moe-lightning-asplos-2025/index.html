@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> moe-lightning-asplos-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="moe-lightning" class="text-2xl mt-2 font-sans">MoE-Lightning</h1>
+<h2 id="moe-lightning-gpu-moe" class="text-xl mt-2 pb-2 font-sans">MoE-Lightning：显存受限 GPU 上的高吞吐 MoE 推理</h2>
+<p class="font-serif my-1">Shiyi Cao, Shu Liu, Tyler Griggs, Peter Schafhalter, Xiaoxuan Liu, Ying Sheng, Joseph E. Gonzalez, Matei Zaharia, Ion Stoica<br/>
+UC Berkeley, Stanford<br/>
+ASPLOS 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-03-27</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: MoE 的 active FLOPs 不高, 但 <strong>weights + KV cache</strong> 极大, <code>T4/L4</code> 这类 GPU 很容易被 <code>CPU-GPU I/O</code> 卡死。</li>
+<li class="ml-8"><strong>方法</strong>: MoE-Lightning 用 <strong>CGOPipe</strong> 重叠 <code>GPU compute + CPU attention + paged weight transfer</code>, 再用 <strong>HRM</strong> 搜最优 <code>(N, \mu, A_g, F_g, r_w, r_c)</code>。</li>
+<li class="ml-8"><strong>结果</strong>: <code>Mixtral 8x7B @ 1xT4</code> 最多 <strong><code>10.3x</code></strong> 吞吐提升, <code>1xL4</code> 上 <code>MTBench@64</code> 达到 <strong><code>294.5 tok/s</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="moe" class="text-2xl mt-2 font-sans">背景：为什么是 MoE</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Cao_-_2025_-_MoE-Lightning_High-Throughput_MoE_Inference_on_Memory-constrained_GPUs_images/_page_3_Figure_4.jpeg" width="760" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">MoE 每个 token 只激活少量 experts, <strong>算力成本接近 dense</strong>, 但 <strong>参数总量大很多</strong>。</li>
+<li class="ml-8">对 batch inference 来说, 最大问题不是 compute 不够, 而是 <strong>模型放不进 GPU memory</strong>。</li>
+<li class="ml-8">论文关注的是 <strong>offline / throughput-oriented</strong> 场景, 不是在线 TTFT 优化。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">旧方案为什么慢</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Cao_-_2025_-_MoE-Lightning_High-Throughput_MoE_Inference_on_Memory-constrained_GPUs_images/_page_2_Figure_4.jpeg" width="720" style="max-width: 92%; max-height: 380px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">旧 offloading 系统主要做 <code>layer-by-layer streaming</code>, 但 <strong>没有把 compute 和 I/O 真正 overlap</strong>。</li>
+<li class="ml-8">为了摊薄权重搬运成本, 它们往往需要更大的 batch, 结果 <strong>CPU memory 被 KV cache 吃爆</strong>。</li>
+<li class="ml-8">论文的目标很明确: <strong>用更少 CPU memory 达到同等或更高 throughput</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1attention-cpu" class="text-2xl mt-2 font-sans">观察1：Attention 该在 CPU</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Cao_-_2025_-_MoE-Lightning_High-Throughput_MoE_Inference_on_Memory-constrained_GPUs_images/_page_5_Figure_18.jpeg" width="740" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 decode 阶段 attention, operational intensity 很低, <code>f16 / int4</code> 都落在 <code>P1</code> 左侧。</li>
+<li class="ml-8">这意味着把 KV 从 CPU 再搬回 GPU 计算, 往往不如 <strong>直接在 CPU 上做 attention</strong>。</li>
+<li class="ml-8">关键不是 CPU 更强, 而是 <strong>CPU-GPU bandwidth 太贵</strong>, attention 又太 memory-bound。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2ffn-gpu" class="text-2xl mt-2 font-sans">观察2：FFN 该在 GPU</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Cao_-_2025_-_MoE-Lightning_High-Throughput_MoE_Inference_on_Memory-constrained_GPUs_images/_page_6_Figure_3.jpeg" width="760" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">MoE FFN 的 operational intensity 会随 <strong>batch size / micro-batch size</strong> 提升而增大。</li>
+<li class="ml-8">当 <code>N</code> 足够大时, FFN 能跨过 <code>P1</code> 甚至逼近 <code>P2</code>, 这时更适合放在 GPU。</li>
+<li class="ml-8">所以最优策略不是 “all CPU” 或 “all GPU”, 而是 <strong>CPU attention + GPU FFN</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="cgopipe" class="text-2xl mt-2 font-sans">系统总览：CGOPipe</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Cao_-_2025_-_MoE-Lightning_High-Throughput_MoE_Inference_on_Memory-constrained_GPUs_images/_page_7_Figure_2.jpeg" width="800" style="max-width: 92%; max-height: 370px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">GPU 负责 <code>PreAttn + PostAttn + MoE FFN</code>, CPU 负责 <code>Attention</code>, I/O 负责 <code>QKV / hidden / weights</code> 三类传输。</li>
+<li class="ml-8"><code>CGOPipe</code> 的核心是 <strong>把下一层 weights 分页</strong>, 穿插到当前层 micro-batch 的执行间隙中。</li>
+<li class="ml-8">对比 FlexGen/FastDecode, 它显著减少 <strong>GPU idle bubbles</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1paged-weights" class="text-2xl mt-2 font-sans">机制1：Paged Weights</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Cao_-_2025_-_MoE-Lightning_High-Throughput_MoE_Inference_on_Memory-constrained_GPUs_images/_page_13_Figure_2.jpeg" width="740" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">GPU 上只保留当前需要的 weight pages, 其余权重常驻 CPU memory。</li>
+<li class="ml-8">论文显式分配 <code>2 x size(W_L)</code> 的 weight buffer, 让 <strong>当前层使用</strong> 与 <strong>下一层预取</strong> 并行。</li>
+<li class="ml-8">路径是 <code>CPU memory -&gt; pinned memory -&gt; GPU</code>, 并用 page table 让 MoE FFN kernel 按页取数。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2hrm" class="text-2xl mt-2 font-sans">机制2：HRM</h1>
+<p class="font-serif my-1">$$
+P_x^i=\min(P_i^{\text{peak}},\ B_i^{\text{peak}} I_x^i,\ B_{j,i}^{\text{peak}} I_x^j)
+$$</p>
+<ul class="list-disc font-serif">
+<li class="ml-8">三重上界: <strong>算力 / 本地带宽 / CPU-GPU 带宽</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">搜索什么策略</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">每层 latency 近似为:
+  <code>T = max(comm_cpu-&gt;gpu, T_cpu, T_gpu)</code></li>
+<li class="ml-8">policy 六元组:
+  <code>(N, mu, A_g, F_g, r_w, r_c)</code></li>
+<li class="ml-8"><code>A_g / F_g</code> 决定 attention 和 FFN 放在哪个设备执行。</li>
+<li class="ml-8">主要实验里最优解几乎总是:
+  <strong><code>A_g = 0, F_g = 1</code></strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="decode" class="text-2xl mt-2 font-sans">一次 decode 怎么走</h1>
+<ol>
+<li class="ml-8">GPU 对当前 micro-batch 做 <code>PreAttn</code>, 生成 <code>QKV</code>。</li>
+<li class="ml-8"><code>QKV DtoH</code>, CPU 直接执行 attention; 同时把上一批 hidden <code>HtoD</code> 回传 GPU。</li>
+<li class="ml-8">GPU 执行 <code>PostAttn + MoE FFN</code>, 而下一层 weights 已经按 page 提前搬运。</li>
+<li class="ml-8">只要让 <code>comm</code>, <code>T_cpu</code>, <code>T_gpu</code> 三者接近, 就能把整层 latency 压到更高的 balance point。</li>
+</ol></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">资源账单</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>不是新硬件</strong>: 这是一个系统 / runtime 设计, 代价主要是 <strong>CPU memory、pinned memory、调度复杂度</strong>。</li>
+<li class="ml-8"><strong>内存代价</strong>: 需要容纳整模型权重的 CPU DRAM, 论文主设定里是 <code>192GB</code> 或 <code>416GB</code>。</li>
+<li class="ml-8"><strong>软件代价</strong>: 需要自定义 CPU GQA kernel、paged weight management、异步依赖编排。</li>
+<li class="ml-8"><strong>优化器代价</strong>: policy 可离线用 <code>MILP</code> 求解, Appendix 说 <strong><code>&lt; 1 min</code></strong>。</li>
+<li class="ml-8"><strong>边界</strong>: 论文明确 <strong>不考虑 disk offloading</strong>, 所以前提是 “GPU 不够, 但 CPU 够”。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>模型</strong>: <code>Mixtral 8x7B</code>, <code>Mixtral 8x22B</code>, <code>DBRX (132B, 16 experts)</code>。</li>
+<li class="ml-8"><strong>硬件</strong>: <code>1xT4(16GB)</code>, <code>1xL4(24GB)</code>, <code>2xT4</code>, <code>4xT4</code>; CPU 为 <code>24/32-core Xeon</code>。</li>
+<li class="ml-8"><strong>负载</strong>: <code>MTBench</code>, <code>HELM Synthetic Reasoning</code>, <code>HELM Summarization</code>。</li>
+<li class="ml-8"><strong>基线</strong>: <code>FlexGen</code>, <code>FlexGen(c)</code>, <code>DeepSpeed Zero-Inference</code>。</li>
+<li class="ml-8"><strong>指标</strong>: generation throughput = <code>generated tokens / (prefill + decode)</code>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">主结果：吞吐大幅提升</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Cao_-_2025_-_MoE-Lightning_High-Throughput_MoE_Inference_on_Memory-constrained_GPUs_images/_page_9_Figure_2.jpeg" width="800" style="max-width: 92%; max-height: 370px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>1xT4</code> 上 <code>MTBench@256</code>, <code>MoE-Lightning(p)</code> 达到 <strong><code>33.9 tok/s</code></strong>, 相对 FlexGen <strong><code>3.5x</code></strong>。</li>
+<li class="ml-8"><code>1xL4</code> 上 <code>MTBench@64</code>, <code>MoE-Lightning</code> 达到 <strong><code>294.5 tok/s</code></strong>, 远高于 FlexGen <code>34.9 tok/s</code>。</li>
+<li class="ml-8">单卡 headline 是 <strong>最多 <code>10.3x</code></strong> 提升, 说明它真正打中了 <strong>memory-constrained regime</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">多卡为何超线性</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Cao_-_2025_-_MoE-Lightning_High-Throughput_MoE_Inference_on_Memory-constrained_GPUs_images/_page_10_Figure_14.jpeg" width="700" style="max-width: 92%; max-height: 380px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">MoE-Lightning 选 <strong>tensor parallelism</strong>, 不是 FlexGen 的 pipeline parallelism。</li>
+<li class="ml-8">对这类 workload, 上界经常由 <strong>total GPU memory capacity</strong> 决定, 多卡直接抬高可行 batch。</li>
+<li class="ml-8"><code>DBRX</code> 上从 <code>2xT4 -&gt; 4xT4</code>, throughput 提升达到 <strong><code>2.1x ~ 2.8x</code></strong>, 呈现近似超线性扩展。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="cpu-attention" class="text-2xl mt-2 font-sans">消融：CPU Attention 值不值</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-03-27/Cao_-_2025_-_MoE-Lightning_High-Throughput_MoE_Inference_on_Memory-constrained_GPUs_images/_page_11_Figure_13.jpeg" width="820" style="max-width: 92%; max-height: 420px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">蓝柱是 <code>KV transfer</code>, 红柱是 <code>CPU attention</code>, 虚线是 <code>MoE FFN</code>。</li>
+<li class="ml-8">在大部分 <code>context length / micro-batch</code> 组合下, <strong>CPU attention 明显快于 KV 搬回 GPU</strong>。</li>
+<li class="ml-8">但当 <code>\mu</code> 和 context 持续增大时, <code>CPU attention</code> 也会变成新瓶颈, 所以这不是永远成立的结论。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>贡献1</strong>: 用 <strong>HRM</strong> 解释并搜索异构 <code>CPU-GPU</code> MoE 推理的最优执行区间。</li>
+<li class="ml-8"><strong>贡献2</strong>: 用 <strong>CGOPipe + paged weights</strong> 把 compute 与 I/O overlap 做满, 显著减少 GPU bubble。</li>
+<li class="ml-8"><strong>贡献3</strong>: 在 <code>T4/L4</code> 级别低成本硬件上, 把 <code>Mixtral / DBRX</code> 的 batch inference 吞吐大幅拉高。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>优点</strong>: 问题定义非常准, <code>model too big for GPU but fits in CPU</code> 这个场景被吃得很透。</li>
+<li class="ml-8"><strong>最强 insight</strong>: 真正该优化的是 <code>max(comm, T_cpu, T_gpu)</code>, 不是某个单独 kernel 的 micro-opt。</li>
+<li class="ml-8"><strong>脆弱假设</strong>: 结论高度依赖 offline batch inference, 且默认 CPU memory 足够、磁盘不参与。</li>
+<li class="ml-8"><strong>缺失实验</strong>: 没有真正覆盖更近的 MoE serving baselines, 对在线 serving 的 tail latency 也几乎没回答。</li>
+<li class="ml-8"><strong>后续方向</strong>: 把 <code>HRM</code> 扩展到 <code>GPU-GPU / multi-node</code> 通信, 或纳入 <code>KV sparsity / speculative decoding</code>。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>
