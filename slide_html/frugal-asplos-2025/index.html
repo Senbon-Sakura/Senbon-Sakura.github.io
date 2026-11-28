@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> frugal-asplos-2025 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="frugal" class="text-2xl mt-2 font-sans">FRUGAL</h1>
+<h2 id="frugal-gpu-embedding" class="text-xl mt-2 pb-2 font-sans">FRUGAL：在消费级 GPU 上高效训练 Embedding 模型</h2>
+<p class="font-serif my-1">Minhui Xie, Shaoxun Zeng, Hao Guo, Shiwei Gao, Youyou Lu<br/>
+Tsinghua University, Renmin University of China<br/>
+ASPLOS 2025<br/>
+Presenter: wzw<br/>
+Date: 2026-04-03</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="tldr" class="text-2xl mt-2 font-sans">TL;DR</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: 现有 embedding training 系统默认 GPU 间可高效 <code>P2P / all-to-all</code>；到了 <code>RTX 3090/4090</code> 这类 commodity GPU，通信必须经 host memory 绕行，吞吐明显掉队。</li>
+<li class="ml-8"><strong>方法</strong>: FRUGAL 不再被动 remote fetch，而是把“别的 GPU 未来会读到的参数”<strong>提前 flush 到 host memory</strong>，再让 miss 直接经 <code>UVA</code> 从 host 读。</li>
+<li class="ml-8"><strong>结果</strong>: 在 <code>8×RTX 3090</code> 上，相比 <code>DGL-KE / HugeCTR</code>，吞吐分别最高提升 <strong><code>1.5x</code> / <code>8.7x</code></strong>；相对 datacenter GPU 方案的 cost-effectiveness 提升 <strong><code>4.0-4.3x</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么要看这个问题</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Embedding models 是推荐系统与图学习的主力负载，特点不是算力不够，而是 <strong>大表 + 稀疏随机访问 + 多 GPU cache 一致性</strong> 很麻烦。</li>
+<li class="ml-8">Commodity GPU 的吸引力非常现实: 更便宜、更容易买到，FP32/FP16 算力也不差。</li>
+<li class="ml-8">但 embedding training 的关键不在裸 TFLOPS，而在 <strong>cache miss 怎么跨 GPU 取、更新怎么同步</strong>。</li>
+<li class="ml-8">所以问题不是“3090 能不能跑”，而是 <strong>现有 datacenter-oriented 系统在 3090 上为什么会崩</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="3090" class="text-2xl mt-2 font-sans">旧系统为什么在 3090 上失效</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-03/Xie_-_2025_-_Frugal_Efficient_and_Economic_Embedding_Model_Training_with_Commodity_GPUs_images/_page_4_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Figure 3</code> 给出的信号很直接: 把 HugeCTR 风格系统搬到 <code>RTX 3090</code>，训练吞吐相对 <code>A30</code> 最多下降 <strong><code>37%</code></strong>。</li>
+<li class="ml-8">根因有两个: <code>all-to-all</code> 带宽只有 datacenter GPU 的 <strong><code>54%</code></strong>，而 cache miss 路径还引入 <strong>CPU 参与 + bounce buffer</strong>。</li>
+<li class="ml-8">这说明 commodity GPU 的主矛盾不是算力，而是 <strong>GPU-GPU communication path 被 host memory 卡住</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="host" class="text-2xl mt-2 font-sans">关键观察：既然必须绕 host，就别临时绕</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-03/Xie_-_2025_-_Frugal_Efficient_and_Economic_Embedding_Model_Training_with_Commodity_GPUs_images/_page_4_Figure_4.jpeg" width="820" style="max-width: 92%; max-height: 330px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Baseline 在<strong>查询时</strong>才走 <code>GPU_i -&gt; CPU/Host -&gt; GPU_j</code>，所以完整通信都暴露在 critical path。</li>
+<li class="ml-8">FRUGAL 把前半段 <code>GPU -&gt; host memory</code> <strong>提前异步做掉</strong>。</li>
+<li class="ml-8">于是 miss 时只剩 <code>host -&gt; GPU</code> 前台读取，代价更像读 host cacheline。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="frugal" class="text-2xl mt-2 font-sans">FRUGAL 全景图</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-03/Xie_-_2025_-_Frugal_Efficient_and_Economic_Embedding_Model_Training_with_Commodity_GPUs_images/_page_5_Picture_14.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Training processes</strong> 维护各自 GPU 的 private embedding cache。</li>
+<li class="ml-8"><strong>Controller process</strong> 维护 host memory 全量参数，并负责 <code>sample queue</code>、<code>update staging queue</code>、<code>priority queue</code> 和后台 flushing threads。</li>
+<li class="ml-8">前向 miss 直接经 <code>UVA</code> 读 host；反向 update 先写本地 cache，再异步刷回 host。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="1" class="text-2xl mt-2 font-sans">机制 1：优先级主动刷回</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">问题: 若所有 update 都 <code>write-through</code> 到 host，foreground training 会被 flush stall 拖住。</li>
+<li class="ml-8">每个参数维护一个 <code>g-entry</code>，记录未来读集合 <code>R set</code> 与待提交写集合 <code>W set</code>。</li>
+<li class="ml-8">核心直觉: <strong>快要被读到的脏参数先 flush，远期参数延后 flush</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="p2f" class="text-2xl mt-2 font-sans">P2F 的规则</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">规则可压缩成一句话: 若 <code>W set</code> 非空，则 <code>priority = min(R set)</code>；否则 <code>priority = ∞</code>。</li>
+<li class="ml-8">训练线程只有在 <code>front(PQ) &gt; s</code> 时才允许进入 step <code>s</code>。</li>
+<li class="ml-8">因此 correctness 被压缩成一个很便宜的数值条件，而不是 per-key 全局同步。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">一次训练步如何流动</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-03/Xie_-_2025_-_Frugal_Efficient_and_Economic_Embedding_Model_Training_with_Commodity_GPUs_images/_page_6_Figure_2.jpeg" width="820" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">训练前，controller 先 lookahead 未来 <code>L</code> 步，把将访问的 key 填进各 g-entry 的 <code>R set</code>。</li>
+<li class="ml-8">只有当 <code>front(PQ) &gt; s</code> 时，训练线程才允许进入 step <code>s</code>，从而避免读到 stale host parameter。</li>
+<li class="ml-8">Step 完成后，gradient 进入 <code>W set</code>；而 <strong>远期才会再访问的 key 可以延后 flush</strong>，所以前台 stall 大幅下降。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="2two-level-pq" class="text-2xl mt-2 font-sans">机制 2：Two-level PQ</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-03/Xie_-_2025_-_Frugal_Efficient_and_Economic_Embedding_Model_Training_with_Commodity_GPUs_images/_page_7_Picture_14.jpeg" width="820" style="max-width: 92%; max-height: 360px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">问题是: <code>P^2F</code> 要高频做 <code>enqueue / dequeue / adjustPriority</code>，传统 concurrent heap 有 <strong><code>O(log N)</code></strong> 复杂度和 near-root contention。</li>
+<li class="ml-8">FRUGAL 利用 priority 就是 step number、且单调不减，把 PQ 做成 <strong>priority index + lock-free hash table</strong>。</li>
+<li class="ml-8">结果是 PQ 相关操作近似 <strong><code>O(1)</code></strong>，并且更适合多 flushing threads 并发访问。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">系统代价与适用边界</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>不是额外搬运</strong>: 论文强调，对 commodity GPU 而言，跨 GPU 数据本来就要 bounce 到 host；FRUGAL主要是<strong>重排时间</strong>，不是增加层级。</li>
+<li class="ml-8"><strong>需要强 host side</strong>: 实验机是 <code>1.5TB DRAM</code>，controller 还要跑 prefetch thread 与 <code>8-12</code> 个 flushing threads。</li>
+<li class="ml-8"><strong>收益边界很清楚</strong>: 最适合 <code>同步训练 + 稀疏 embedding access + 单机 PCIe commodity GPU</code>。</li>
+<li class="ml-8"><strong>不解决的问题</strong>: 作者明确不考虑 cross-server distributed training；对 dense model 或高端互联 GPU，这套设计价值会下降。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>平台</strong>: <code>2× Intel Gold 6130 + 1.5TB DRAM + 8× RTX 3090</code>，每卡 <code>PCIe 4.0×16</code>。</li>
+<li class="ml-8"><strong>KG 工作负载</strong>: <code>FB15k / Freebase / WikiKG + TransE</code>，embedding dim <code>400</code>。</li>
+<li class="ml-8"><strong>REC 工作负载</strong>: <code>Avazu / Criteo / CriteoTB + DLRM</code>，embedding dim <code>32</code>。</li>
+<li class="ml-8"><strong>Baselines</strong>: <code>DGL-KE / DGL-KE-cached / PyTorch / HugeCTR / Frugal-Sync</code>。</li>
+<li class="ml-8"><strong>默认配置</strong>: cache ratio <code>5%</code>，默认全卡，通常使用 <code>8</code> 个 flushing threads。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="kg" class="text-2xl mt-2 font-sans">主结果：KG 模型</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-03/Xie_-_2025_-_Frugal_Efficient_and_Economic_Embedding_Model_Training_with_Commodity_GPUs_images/_page_10_Figure_10.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">相比 <code>DGL-KE</code>，FRUGAL 吞吐提升 <strong><code>1.2-1.5x</code></strong>；相比 <code>DGL-KE-cached</code>，提升 <strong><code>4.1-7.1x</code></strong>。</li>
+<li class="ml-8">反常但很重要的一点是: <code>DGL-KE-cached</code> 在 commodity GPU 上常常<strong>比 vanilla DGL-KE 还慢</strong>。</li>
+<li class="ml-8">这正说明 baseline 的 multi-GPU cache 本身没错，错的是它依赖的 <strong>cross-GPU communication model</strong> 不适合 3090。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="rec" class="text-2xl mt-2 font-sans">主结果：REC 模型</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-03/Xie_-_2025_-_Frugal_Efficient_and_Economic_Embedding_Model_Training_with_Commodity_GPUs_images/_page_10_Figure_12.jpeg" width="820" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">对 <code>Avazu / Criteo / CriteoTB</code>，FRUGAL 相比 <code>PyTorch</code> 达 <strong><code>4.9-7.4x</code></strong>，相比 <code>HugeCTR</code> 达 <strong><code>6.1-8.7x</code></strong>。</li>
+<li class="ml-8">提升比 KG 更大，因为 REC 更 memory-intensive，remote cache query 更频繁。</li>
+<li class="ml-8">这页是论文最强结果: <strong>不是略优，而是把 commodity GPU 从“不太适合缓存式训练”拉回“非常有性价比”</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">为什么它真的更快</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">机制</th>
+<th style="text-align: left;">指标</th>
+<th style="text-align: left;">收益</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>P^2F</code> vs SyncFlushing</td>
+<td style="text-align: left;">training stall time</td>
+<td style="text-align: left;"><strong><code>34-101x</code> 更低</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>P^2F</code> vs SyncFlushing</td>
+<td style="text-align: left;">end-to-end throughput</td>
+<td style="text-align: left;"><strong><code>3.5-5.3x</code></strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>UVA</code> host access</td>
+<td style="text-align: left;">host access latency</td>
+<td style="text-align: left;"><strong><code>3.1-3.4x</code> 更低</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">Two-level PQ vs TreeHeap</td>
+<td style="text-align: left;">FRUGAL throughput</td>
+<td style="text-align: left;"><strong><code>2.1-3.3x</code></strong></td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">所以 FRUGAL 的收益不是一个单一 trick，而是三段叠加: <strong>主动刷回、CPU-bypass 读取、可扩展 PQ</strong>。</li>
+<li class="ml-8">论文最可信的地方也在这里: 它把最终吞吐拆成可解释的局部因果链，而不是只给几根高柱子。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">性价比与规模趋势</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-03/Xie_-_2025_-_Frugal_Efficient_and_Economic_Embedding_Model_Training_with_Commodity_GPUs_images/_page_11_Figure_4.jpeg" width="760" style="max-width: 92%; max-height: 320px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">FRUGAL 在 <code>RTX 3090</code> 上做到约 <strong><code>89%-97%</code></strong> 的 <code>A30</code> 吞吐，但卡价仅约 <strong><code>$1310 vs $5885</code></strong>，因此性价比提升 <strong><code>4.0-4.3x</code></strong>。</li>
+<li class="ml-8">论文同时报告其扩展性优于 baseline，但受限于 commodity GPU 通信硬件，仍非线性 scaling。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的结论</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>最强点</strong>: 它抓到的根因很准, <strong>cache coherence path 必须围绕 host memory 重写</strong>。</li>
+<li class="ml-8"><strong>最值得记住</strong>: <code>proactively flushing + UVA host read + two-level PQ</code> 三件事必须一起看。</li>
+<li class="ml-8"><strong>主要保留意见</strong>: 缺少最终 accuracy 曲线，且强依赖 lookahead、host DRAM 和单机场景。</li>
+<li class="ml-8"><strong>一句话</strong>: 这是一个<strong>非常对症、非常务实</strong>的 commodity-GPU embedding training redesign。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>

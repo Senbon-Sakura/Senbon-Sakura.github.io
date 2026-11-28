@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link href="./static/css/base.css" rel="stylesheet">
+    <link href="./static/css/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.font.im/css?family=Source+Serif+Pro%7CLato%7CInconsolata" rel="stylesheet"
+        type="text/css">
+    <title> tpu-isca-2017 </title>
+    <!-- browser favicon -->
+    <link rel="shortcut icon" href="./static/img/favicon.png">
+    <style>
+        .font-sans {
+            font-family: 'Lato', 'SimHei', 'STHeiti', 'SimHei', 'Serif';
+        }
+
+        .font-serif {
+            font-family: 'Source Serif Pro', 'Songti SC', 'SimSun', 'Serif', serif;
+        }
+    </style>
+    <!-- <link rel="stylesheet" href="https://jyywiki.cn/static/katex/katex.min.css">
+    <script defer src="https://jyywiki.cn/static/katex/katex.min.js"></script> -->
+    <link rel="stylesheet" href="./static/katex/katex.min.css">
+    <script defer src="./static/katex/katex.min.js"></script>
+    <!-- <script defer src="https://jyywiki.cn/static/katex/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script> -->
+    <script defer src="./static/katex/auto-render.min.js"></script>
+    <script src="plugin/markdown/markdown.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                // customised options
+                // &#8226; auto-render specific keys, e.g.:
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                // &#8226; rendering keys, e.g.:
+                throwOnError: false
+            });
+        });
+    </script>
+
+    <link rel="stylesheet" href="./static/reveal/reveal.css">
+    <link rel="stylesheet" href="./static/reveal/theme/simple.css" id="theme">
+    <link rel="stylesheet" href="./static/jyy/jyy.css">
+
+
+    <style id="arch-paper-slide-layout-guard">
+        /* ARCH_PAPER_SLIDE_LAYOUT_GUARD */
+        .reveal .slides section img.float-center {
+            display: block !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        .reveal .slides section img,
+        .reveal .slides section video {
+            max-width: min(880px, 92%);
+            max-height: 520px;
+            width: auto !important;
+            height: auto !important;
+            object-fit: contain;
+        }
+
+        .reveal .slides section table {
+            max-width: 100%;
+        }
+    </style>
+
+</head>
+
+<body class="d-flex flex-column h-100">
+
+    <div class="reveal">
+        <div class="slides">
+            <section><section><div class="center middle"><div style="width:100%"><div><h1 id="google-tpu-v1" class="text-2xl mt-2 font-sans">Google TPU v1</h1>
+<h2 id="_1" class="text-xl mt-2 pb-2 font-sans">数据中心推理性能分析</h2>
+<p class="font-serif my-1">Norman P. Jouppi, Cliff Young, Nishant Patil, David Patterson, et al.<br/>
+Google, Inc.<br/>
+ISCA 2017<br/>
+Presenter: wzw<br/>
+Date: 2026-04-27</p></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">三句话看懂</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>瓶颈</strong>: 数据中心 <code>NN inference</code> 真正受限的不是峰值 <code>TOPS</code>，而是 <strong>严格 <code>P99 latency</code> 下的有效吞吐</strong>。</li>
+<li class="ml-8"><strong>方法</strong>: TPU v1 用 <strong><code>256×256</code> systolic <code>INT8</code> MXU + <code>28 MiB</code> software-managed on-chip memory + 极简确定性执行模型</strong>，主动放弃通用处理器特性。</li>
+<li class="ml-8"><strong>结果</strong>: 在 Google 生产 workload 上，TPU 相对同时代 <code>K80</code> 达到 <strong><code>13.2×</code> 几何均值</strong>、<strong><code>15.3×</code> 加权均值</strong>性能提升，<code>performance/Watt</code> 达 <strong><code>25× ~ 29×</code></strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">背景：线上推理</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">论文评测的 <code>2×MLP + 2×LSTM + 2×CNN</code> 覆盖 Google 当时 <strong><code>95%</code></strong> 的 datacenter <code>NN inference</code> 需求。</li>
+<li class="ml-8">这些应用大多是 <strong>user-facing services</strong>，核心约束是 <code>99th-percentile response time</code>，不是离线大 batch 吞吐。</li>
+<li class="ml-8">量化后的 inference 已能稳定使用 <strong><code>8-bit</code></strong> 运算；作者的判断是：训练继续放在 GPU，推理值得做专用 ASIC。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="gpu" class="text-2xl mt-2 font-sans">GPU 为什么没赢</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Platform</th>
+<th style="text-align: left;">Batch</th>
+<th style="text-align: left;">99th% latency</th>
+<th style="text-align: left;">IPS</th>
+<th style="text-align: left;">% Max IPS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">CPU</td>
+<td style="text-align: left;">16</td>
+<td style="text-align: left;"><code>7.2 ms</code></td>
+<td style="text-align: left;">5,482</td>
+<td style="text-align: left;"><code>42%</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">GPU</td>
+<td style="text-align: left;">16</td>
+<td style="text-align: left;"><code>6.7 ms</code></td>
+<td style="text-align: left;">13,461</td>
+<td style="text-align: left;"><code>37%</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">TPU</td>
+<td style="text-align: left;">200</td>
+<td style="text-align: left;"><code>7.0 ms</code></td>
+<td style="text-align: left;">225,000</td>
+<td style="text-align: left;"><code>80%</code></td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">以 <code>MLP0</code> 为例，应用给出的时延预算只有 <strong><code>7 ms</code></strong>。</li>
+<li class="ml-8"><code>K80</code> 的优势建立在高吞吐、大 batch、多线程隐藏延迟上；一旦时延封顶，很多峰值能力根本用不上。</li>
+<li class="ml-8">所以在真实 inference 中，<code>K80</code> 只比 <code>Haswell</code> <strong>略快</strong>，远没有训练场景那种代际优势。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">关键观察</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/2017-Jouppi-In-Datacenter_Performance_Analysis_images/_page_6_Figure_6.jpeg" width="760" style="max-width: 92%; max-height: 350px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Fig.8</code> 说明 TPU 的 6 个 workload 都高于 CPU/GPU roofline，但 <strong><code>4/6</code> 仍是 memory-bound</strong>。</li>
+<li class="ml-8">关键洞察是：<strong>低利用率的大资源，只要足够便宜，仍能赢</strong>。</li>
+<li class="ml-8">所以 v1 优先堆 <code>INT8 MAC</code> 和片上 SRAM，而不是复杂控制。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">总体架构</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/2017-Jouppi-In-Datacenter_Performance_Analysis_images/_page_2_Figure_12.jpeg" width="760" style="max-width: 92%; max-height: 340px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">Host 经 <code>PCIe Gen3 x16</code> 下发指令；TPU 更像矩阵 <code>FPU coprocessor</code>，而不是小型 GPU。</li>
+<li class="ml-8">数据通路很直接：<code>Weight Memory -&gt; FIFO -&gt; MXU -&gt; Accumulators -&gt; Activation -&gt; Unified Buffer</code>。</li>
+<li class="ml-8">目标是 <strong>run whole inference models on TPU</strong>，减少 host 参与和抖动。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">芯片预算</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/2017-Jouppi-In-Datacenter_Performance_Analysis_images/_page_2_Figure_14.jpeg" width="760" style="max-width: 92%; max-height: 390px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>24 MiB Unified Buffer</code> 占 die 近 <strong><code>1/3</code></strong>，<code>Matrix Multiply Unit</code> 占约 <strong><code>1/4</code></strong>。</li>
+<li class="ml-8">整个 datapath 占 die 的 <strong><code>67%</code></strong>，而 control 只有 <strong><code>2%</code></strong>。</li>
+<li class="ml-8">这正是 TPU 的设计哲学：<strong>把面积给数据路径，不给 speculation / OoO / cache hierarchy</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="mxu" class="text-2xl mt-2 font-sans">MXU：核心算子</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/2017-Jouppi-In-Datacenter_Performance_Analysis_images/_page_3_Picture_13.jpeg" width="780" style="max-width: 92%; max-height: 400px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">核心是 <code>256×256 = 65,536</code> 个 <strong><code>INT8 MAC</code></strong>，峰值 <strong><code>92 TOPS</code></strong>。</li>
+<li class="ml-8"><code>systolic execution</code> 的目的不是“酷”，而是<strong>减少大 SRAM 的读写次数</strong>，把数据重用固化在数据流里。</li>
+<li class="ml-8">这也是为什么 TPU 能在仅 <strong><code>40 W</code></strong> 忙时功耗下塞进远多于 <code>K80</code> 的 MAC 数量。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">显式存储层次</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Weight Memory</code> 是片外 <strong><code>8 GiB</code></strong> DRAM，权重经 <code>Weight FIFO</code> 分块流入 MXU；这决定了很多 workload 最终受制于 <strong>weight bandwidth</strong>。</li>
+<li class="ml-8">片上有 <strong><code>24 MiB Unified Buffer + 4 MiB Accumulators</code></strong>，完全是 <strong>software-managed memory</strong>，不是传统 cache。</li>
+<li class="ml-8">指令也刻意偏 <code>CISC</code>：<code>Read_Host_Memory / Read_Weights / MatrixMultiply / Activate / Write_Host_Memory</code>，目的是减轻 <code>PCIe</code> 指令带宽压力。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">一次推理怎么走</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">Step 1: Host 把输入激活搬到 <code>Unified Buffer</code>，并把本层指令序列发给 TPU。</li>
+<li class="ml-8">Step 2: <code>Read_Weights</code> 将当前 tile 的权重从 <code>Weight Memory</code> 预取到 <code>Weight FIFO</code>。</li>
+<li class="ml-8">Step 3: <code>MatrixMultiply/Convolve</code> 在 <code>256×256</code> MXU 上生成部分和，写入 <code>Accumulators</code>。</li>
+<li class="ml-8">Step 4: <code>Activate</code> 完成 <code>ReLU/Sigmoid/Pooling</code> 等后处理，再写回 <code>Unified Buffer</code> 或 host，进入下一层。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">硬件账单</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Chip</th>
+<th style="text-align: left;">Die</th>
+<th style="text-align: left;">Busy Power</th>
+<th style="text-align: left;">Peak TOPS</th>
+<th style="text-align: left;">On-chip Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Haswell</td>
+<td style="text-align: left;"><code>662 mm²</code></td>
+<td style="text-align: left;"><code>145 W</code></td>
+<td style="text-align: left;"><code>2.6</code></td>
+<td style="text-align: left;"><code>51 MiB</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">K80 die</td>
+<td style="text-align: left;"><code>561 mm²</code></td>
+<td style="text-align: left;"><code>98 W</code></td>
+<td style="text-align: left;"><code>2.8</code></td>
+<td style="text-align: left;"><code>8 MiB</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">TPU</td>
+<td style="text-align: left;"><code>&lt;331 mm²</code></td>
+<td style="text-align: left;"><code>40 W</code></td>
+<td style="text-align: left;"><code>92</code></td>
+<td style="text-align: left;"><code>28 MiB</code></td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">TPU die <strong>不到 Haswell 一半面积</strong>，忙时功耗也明显低于 K80。</li>
+<li class="ml-8">但它拥有 <strong>25×</strong> K80 的 MAC 数量，以及 <strong>3.5×</strong> 的 on-chip memory。</li>
+<li class="ml-8">这不是“魔法工艺”，而是因为作者明确牺牲了通用处理器最贵的那部分复杂性。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">方法学</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>Platforms</strong>: 2015 datacenter 可部署平台，要求有 <code>SECDED</code> 与服务器级配置，不拿消费卡或研究原型凑数。</li>
+<li class="ml-8"><strong>Workloads</strong>: Google 生产环境的 <code>MLP/LSTM/CNN</code>，并按真实业务占比做 <strong>weighted mean</strong>。</li>
+<li class="ml-8"><strong>Metrics</strong>: 不是只看 kernel 吞吐，而是同时看 <code>roofline</code>、<code>P99 latency</code>、<code>host overhead</code>、<code>performance/Watt</code>。</li>
+<li class="ml-8"><strong>Alternative design</strong>: 论文还建立 TPU performance model，分析 memory bandwidth、clock、matrix size 等参数变化。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">主结果：性能</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Metric</th>
+<th style="text-align: left;">GPU vs CPU</th>
+<th style="text-align: left;">TPU vs CPU</th>
+<th style="text-align: left;">TPU vs GPU</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Geometric Mean</td>
+<td style="text-align: left;"><code>1.1×</code></td>
+<td style="text-align: left;"><code>14.5×</code></td>
+<td style="text-align: left;"><code>13.2×</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Weighted Mean</td>
+<td style="text-align: left;"><code>1.9×</code></td>
+<td style="text-align: left;"><code>29.2×</code></td>
+<td style="text-align: left;"><code>15.3×</code></td>
+</tr>
+</tbody>
+</table>
+<ul class="list-disc font-serif">
+<li class="ml-8">最强的样例并不是 CNN 独占：TPU 对 <code>MLP0</code> 和 <code>CNN1</code> 分别可到 <strong><code>41×</code></strong> 和 <strong><code>71×</code></strong> <code>CPU</code>。</li>
+<li class="ml-8">但收益并不均匀，<code>LSTM1</code> 只有 <strong><code>1.2× CPU</code></strong>，说明 workload shape 仍然非常关键。</li>
+<li class="ml-8">论文最扎实的一点是：这些数字已经<strong>包含 host server overhead</strong>，而不是只报裸 kernel。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">能效：真正的商业理由</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/2017-Jouppi-In-Datacenter_Performance_Analysis_images/_page_6_Figure_13.jpeg" width="740" style="max-width: 92%; max-height: 340px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8">相对 <code>Haswell</code>，TPU server 的 <strong>total performance/Watt</strong> 达到 <strong><code>17× ~ 34×</code></strong>。</li>
+<li class="ml-8">相对 <code>K80</code>，TPU 的 <strong>incremental performance/Watt</strong> 达到 <strong><code>25× ~ 29×</code></strong>。</li>
+<li class="ml-8">作者明确把 <code>performance/Watt</code> 当作 <code>performance/TCO</code> 的代理指标。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">真瓶颈在哪</h1>
+<p class="font-serif my-1"><img class="float-center" src="https://raw.githubusercontent.com/Senbon-Sakura/HexoBlogFigure/master/papers/2026-04-27/2017-Jouppi-In-Datacenter_Performance_Analysis_images/_page_7_Figure_5.jpeg" width="780" style="max-width: 92%; max-height: 380px; object-fit: contain;"/></p>
+<ul class="list-disc font-serif">
+<li class="ml-8"><code>Fig.11</code> 最重要的结论：把 <strong>memory bandwidth 提高 <code>4×</code>，平均性能约增 <code>3×</code></strong>；单纯提高频率几乎没用。</li>
+<li class="ml-8">甚至把矩阵阵列从 <code>256×256</code> 盲目放大到 <code>512×512</code> 还可能变慢，因为 tile fragmentation 更严重。</li>
+<li class="ml-8">换句话说，TPU v1 的第一瓶颈不是 MAC 数量，而是 <strong>weight memory bandwidth</strong>。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">只换内存会怎样</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">作者构造了一个假想 <code>TPU'</code>：基本不改计算核心，只把 <code>DDR3 Weight Memory</code> 升级成 <code>GDDR5</code>。</li>
+<li class="ml-8">结果非常直接：几何均值 speedup 提升到 <strong><code>2.6×</code></strong>，加权均值到 <strong><code>3.9×</code></strong>；计入 host overhead 后仍有 <strong><code>1.9× / 3.2×</code></strong>。</li>
+<li class="ml-8">这说明 TPU v1 的工程约束不是“没想到”，而是 <strong>15 个月交付周期</strong> 下优先做出了最小可部署版本。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">弱点与反例</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>CNN1 是负教材</strong>: 虽然 operational intensity 高，但 TPU 只跑到 <strong><code>14.1 TOPS</code></strong>；根因是浅 feature depth、<code>28.1%</code> weight stalls 与 <code>22.8%</code> RAW stalls。</li>
+<li class="ml-8"><strong>能量比例性差</strong>: TPU 在 <code>10%</code> 负载时仍消耗 <strong><code>88%</code></strong> 满载功耗，明显不如 CPU/GPU。</li>
+<li class="ml-8"><strong>结论依赖 workload mix</strong>: 这篇论文最强的适用域是 <strong>Google 2015-2016 latency-sensitive inference</strong>，不是所有 NN 场景的普适终局。</li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">总结</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8">TPU v1 最重要的贡献，不是“做了个更快的 NN chip”，而是<strong>第一次把 datacenter inference 的正确优化目标定成 <code>P99 latency under real deployment constraints</code></strong>。</li>
+<li class="ml-8">架构上，它用 <strong>大而不太大的 <code>INT8</code> systolic MXU + substantial software-managed memory + deterministic execution</strong> 换到了数量级收益。</li>
+<li class="ml-8">方法论上，它告诉后来的 AI accelerator：<strong>先搞清楚瓶颈是 tail latency、memory bandwidth、还是 compiler mapping，再决定堆哪种硬件资源。</strong></li>
+</ul></div></div></div></section></section><section><section><div class="center middle"><div style="width:100%"><div><h1 id="_1" class="text-2xl mt-2 font-sans">我的评价</h1>
+<ul class="list-disc font-serif">
+<li class="ml-8"><strong>优点</strong>: 工业数据扎实，评价维度正确，负结果和局限也没有回避。</li>
+<li class="ml-8"><strong>最强点</strong>: 论文把后续十年的几条主线都提前讲清楚了：<code>low precision</code>、<code>systolic array</code>、<code>managed SRAM</code>、<code>roofline</code>、<code>latency-oriented serving</code>。</li>
+<li class="ml-8"><strong>缺口</strong>: baseline 并非各自平台上的“终极优化版”；CPU 的 <code>INT8</code> 路线和更新 GPU 平台没有系统展开。</li>
+<li class="ml-8"><strong>后续</strong>: 如果把这篇 paper 和后来的 <code>TPU v2/v3/v4</code> 连起来看，会更清楚地看到 Google 后续几代几乎都在补 <strong>memory system</strong> 和 <strong>scale-out fabric</strong>。</li>
+</ul></div></div></div></section></section>
+        </div>
+    </div>
+
+    <script src="./static/reveal/reveal.js"></script>
+
+    <script>
+        Reveal.initialize({
+
+            width: 1024, height: 768,
+
+            slideNumber: 'c/t',
+            controlsTutorial: false,
+            progress: false,
+            hash: true,
+            center: false,
+            autoAnimateUnmatched: true,
+            autoAnimateEasing: 'ease-out',
+            autoAnimateDuration: 0.3,
+            transitionSpeed: 'fast'
+        });
+    </script>
+</body>
+
+</html>
